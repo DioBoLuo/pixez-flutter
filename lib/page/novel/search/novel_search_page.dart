@@ -15,7 +15,7 @@
  */
 
 import 'package:dio/dio.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:pixez/component/pixiv_image.dart';
 import 'package:pixez/er/leader.dart';
@@ -32,6 +32,10 @@ import 'package:pixez/page/novel/viewer/novel_viewer.dart';
 import 'package:pixez/page/picture/illust_lighting_page.dart';
 
 class NovelSearchPage extends StatefulWidget {
+  final String? initialQuery;
+
+  const NovelSearchPage({Key? key, this.initialQuery}) : super(key: key);
+
   @override
   _NovelSearchPageState createState() => _NovelSearchPageState();
 }
@@ -43,7 +47,8 @@ class _NovelSearchPageState extends State<NovelSearchPage> {
   @override
   void initState() {
     tagHistoryStore.fetch();
-    _textEditingController = TextEditingController();
+    _textEditingController =
+        TextEditingController(text: widget.initialQuery ?? '');
     super.initState();
     fetch();
   }
@@ -281,7 +286,7 @@ class _NovelSearchPageState extends State<NovelSearchPage> {
             children: [
               PixivImage(tag.illust.imageUrls.squareMedium),
               Container(
-                color: Colors.black.withOpacity(0.3),
+                color: Colors.black.withValues(alpha: 0.3),
               ),
               Align(
                 alignment: Alignment.bottomCenter,

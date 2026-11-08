@@ -14,16 +14,18 @@
  *
  */
 
-import 'dart:io';
+import 'dart:math';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:dio/dio.dart';
+import 'package:dio_compatibility_layer/dio_compatibility_layer.dart';
 import 'package:fluent_ui/fluent_ui.dart';
-import 'package:flutter_cache_manager/flutter_cache_manager.dart';
-import 'package:http/io_client.dart';
-import 'package:http_interceptor/http_interceptor.dart';
+import 'package:flutter_cache_manager_dio/flutter_cache_manager_dio.dart';
 import 'package:pixez/er/hoster.dart';
-import 'package:pixez/exts.dart';
+import 'package:pixez/er/pixiv_image_source.dart';
 import 'package:pixez/main.dart';
+import 'package:pixez/network/pixez_network_settings.dart';
+import 'package:rhttp/rhttp.dart' as r;
 
 const ImageHost = "i.pximg.net";
 const ImageCatHost = "i.pixiv.re";
@@ -33,48 +35,7 @@ const ImageSHost = "s.pximg.net";
 // 实现CacheManager和混入ImageCacheManager缺一不可
 // 如果你恰好看到这个实现方法实例，且对你有些帮助或者启发：
 // 听一首Mili-Salt, Pepper, Birds, And the Thought Police吧 🎵
-class PixivHostInterceptor implements InterceptorContract {
-  @override
-  Future<BaseRequest> interceptRequest({required BaseRequest request}) async {
-    if (request.url.host == "s.pximg.net") {
-      request.headers["Host"] = request.url.host;
-      return request;
-    }
-    Uri uri = request.url.toTureUri();
-    request.headers["Host"] = uri.host;
-    return request.copyWith(url: uri, headers: request.headers);
-  }
-
-  @override
-  Future<BaseResponse> interceptResponse(
-      {required BaseResponse response}) async {
-    if (response.statusCode != 200) {
-      splashStore.maybeFetch();
-    }
-    return response;
-  }
-}
-
-class PixivCacheManager extends CacheManager with ImageCacheManager {
-  static const key = 'PixezCachedImageData';
-
-  PixivCacheManager()
-      : super(Config(
-          key,
-          repo: JsonCacheInfoRepository(databaseName: key),
-          fileService: HttpFileService(
-              httpClient: InterceptedClient.build(
-                  interceptors: [
-                PixivHostInterceptor(),
-              ],
-                  client: IOClient(HttpClient()
-                    ..badCertificateCallback =
-                        (X509Certificate cert, String host, int port) =>
-                            true))),
-        ));
-}
-
-PixivCacheManager pixivCacheManager = PixivCacheManager();
+DioCacheManager? pixivCacheManager = DioCacheManager.instance;
 
 class PixivImage extends StatefulWidget {
   final String url;
@@ -86,17 +47,46 @@ class PixivImage extends StatefulWidget {
   final double? width;
   final String? host;
 
-  PixivImage(this.url,
-      {this.placeWidget,
-      this.fade = true,
-      this.fit,
-      this.enableMemoryCache,
-      this.height,
-      this.host,
-      this.width});
+  PixivImage(
+    this.url, {
+    this.placeWidget,
+    this.fade = true,
+    this.fit,
+    this.enableMemoryCache,
+    this.height,
+    this.host,
+    this.width,
+  });
 
   @override
   _PixivImageState createState() => _PixivImageState();
+
+  static Dio? _cacheDio;
+
+  static Future<void> generatePixivCache() async {
+    final client = await r.RhttpCompatibleClient.createSync(
+      settings: PixezNetworkSettings.forImages(
+        userSetting.pictureSource,
+        userSetting.networkMode,
+      ),
+    );
+    final existing = _cacheDio;
+    if (existing != null) {
+      existing.httpClientAdapter = ConversionLayerAdapter(client);
+      return;
+    }
+    final dio = Dio();
+    dio.interceptors.add(
+      PixivImageSourceInterceptor(
+        networkMode: () => userSetting.networkMode,
+        pictureSource: () => userSetting.pictureSource,
+      ),
+    );
+    dio.interceptors.add(LogInterceptor(responseBody: false));
+    dio.httpClientAdapter = ConversionLayerAdapter(client);
+    _cacheDio = dio;
+    DioCacheManager.initialize(dio);
+  }
 }
 
 class _PixivImageState extends State<PixivImage> {
@@ -135,37 +125,71 @@ class _PixivImageState extends State<PixivImage> {
 
   @override
   Widget build(BuildContext context) {
+    final size = min(min(width ?? 60, height ?? 60), 60.0);
     return CachedNetworkImage(
-        placeholder: (context, url) =>
-            widget.placeWidget ?? Container(height: height),
-        errorWidget: (context, url, _) => Container(
+      placeholder: widget.placeWidget == null
+          ? null
+          : (context, url) =>
+                widget.placeWidget ??
+                Container(
+                  height: height,
+                  child: Center(
+                    child: SizedBox(
+                      width: size,
+                      height: size,
+                      child: const Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: const ProgressRing(),
+                      ),
+                    ),
+                  ),
+                ),
+      progressIndicatorBuilder: widget.placeWidget == null
+          ? (context, url, progress) => Container(
               height: height,
               child: Center(
-                child: HyperlinkButton(
-                  onPressed: () {
-                    setState(() {});
-                  },
-                  child: Text(":("),
+                child: SizedBox(
+                  width: size,
+                  height: size,
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: ProgressRing(value: progress.progress),
+                  ),
                 ),
               ),
-            ),
-        fadeOutDuration:
-            widget.fade ? const Duration(milliseconds: 1000) : null,
-        // memCacheWidth: width?.toInt(),
-        // memCacheHeight: height?.toInt(),
-        imageUrl: url,
-        cacheManager: pixivCacheManager,
+            )
+          : null,
+      errorWidget: (context, url, _) => Container(
         height: height,
-        width: width,
-        fit: fit ?? BoxFit.fitWidth,
-        httpHeaders: Hoster.header(url: url));
+        child: Center(
+          child: HyperlinkButton(
+            onPressed: () {
+              setState(() {});
+            },
+            child: Text(":("),
+          ),
+        ),
+      ),
+      fadeOutDuration: widget.fade ? const Duration(milliseconds: 1000) : null,
+      // memCacheWidth: width?.toInt(),
+      // memCacheHeight: height?.toInt(),
+      imageUrl: url,
+      cacheManager: pixivCacheManager,
+      height: height,
+      width: width,
+      fit: fit ?? BoxFit.fitWidth,
+      httpHeaders: Hoster.header(url: url),
+    );
   }
 }
 
 class PixivProvider {
-  static CachedNetworkImageProvider url(String url, {String? preUrl}) {
-    return CachedNetworkImageProvider(url,
-        headers: Hoster.header(url: preUrl), cacheManager: pixivCacheManager);
+  static ImageProvider url(String url, {String? preUrl}) {
+    return CachedNetworkImageProvider(
+      url,
+      headers: Hoster.header(url: preUrl),
+      cacheManager: pixivCacheManager,
+    );
   }
 }
 

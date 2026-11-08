@@ -14,9 +14,11 @@
  *
  */
 
+import 'dart:io';
+
 import 'package:bot_toast/bot_toast.dart';
 import 'package:easy_refresh/easy_refresh.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:pixez/component/comment_emoji_text.dart';
 import 'package:pixez/component/painter_avatar.dart';
@@ -29,8 +31,10 @@ import 'package:pixez/main.dart';
 import 'package:pixez/models/comment_response.dart';
 import 'package:pixez/network/api_client.dart';
 import 'package:pixez/page/comment/comment_store.dart';
-import 'package:pixez/page/picture/illust_lighting_page.dart';
 import 'package:pixez/page/report/report_items_page.dart';
+import 'package:pixez/supportor_plugin.dart';
+import 'package:pixez/utils/haptic_util.dart';
+import 'package:share_plus/share_plus.dart';
 
 enum CommentArtWorkType { ILLUST, NOVEL }
 
@@ -60,6 +64,7 @@ class _CommentPageState extends State<CommentPage> {
   String? parentCommentName;
   late EasyRefreshController easyRefreshController;
   late CommentStore _store;
+  String _commentText = "";
 
   List<String> banList = [
     "bb8.news",
@@ -73,6 +78,7 @@ class _CommentPageState extends State<CommentPage> {
 
   @override
   void initState() {
+    supportTranslate = SupportorPlugin.supportTranslate;
     _focusNode = FocusNode();
     parentCommentId = widget.isReplay ? widget.pId : null;
     parentCommentName = widget.isReplay ? widget.name : null;
@@ -83,6 +89,7 @@ class _CommentPageState extends State<CommentPage> {
         widget.isReplay, widget.type)
       ..fetch();
     super.initState();
+    supportTranslateCheck();
   }
 
   @override
@@ -166,7 +173,7 @@ class _CommentPageState extends State<CommentPage> {
     return Container(
       child: Scaffold(
         appBar: AppBar(
-          title: Text(I18n.of(context).view_comment),
+          title: Text('${I18n.of(context).view_comment}'),
         ),
         body: SafeArea(
           child: Column(
@@ -232,6 +239,7 @@ class _CommentPageState extends State<CommentPage> {
                                               .profileImageUrls
                                               .medium,
                                           id: comments[index].user!.id!,
+                                          size: Size(36, 36),
                                         ),
                                       ),
                                       Expanded(
@@ -250,6 +258,7 @@ class _CommentPageState extends State<CommentPage> {
                                                   comment.user!.name,
                                                   maxLines: 1,
                                                   style: TextStyle(
+                                                      fontSize: 12,
                                                       color: Theme.of(context)
                                                           .colorScheme
                                                           .secondary,
@@ -268,16 +277,8 @@ class _CommentPageState extends State<CommentPage> {
                                               Padding(
                                                 padding: const EdgeInsets.only(
                                                     right: 4.0),
-                                                child: SelectionArea(
-                                                  focusNode: _focusNode,
-                                                  selectionControls:
-                                                      TextSelectionFix
-                                                          .buildControls(
-                                                              context),
-                                                  child: CommentEmojiText(
-                                                    text: comment.comment ?? "",
-                                                  ),
-                                                ),
+                                                child: _buildCommentContent(
+                                                    context, comment),
                                               ),
                                             if (comment.stamp != null)
                                               Padding(
@@ -319,7 +320,7 @@ class _CommentPageState extends State<CommentPage> {
                                                     .toShortTime(),
                                                 style: Theme.of(context)
                                                     .textTheme
-                                                    .bodySmall,
+                                                    .bodySmall?.copyWith(color: Theme.of(context).colorScheme.secondary),
                                               ),
                                             )
                                           ],
@@ -343,7 +344,7 @@ class _CommentPageState extends State<CommentPage> {
                                 return Padding(
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 8.0),
-                                  child: Divider(),
+                                  child: Divider(thickness: 0.5),
                                 );
                               },
                             )
@@ -364,7 +365,7 @@ class _CommentPageState extends State<CommentPage> {
                 child: Column(
                   children: [
                     Container(
-                      color: Theme.of(context).dialogBackgroundColor,
+                      color: Theme.of(context).colorScheme.surfaceContainer, // TODO: edge to edge
                       child: Row(
                         children: <Widget>[
                           IconButton(
@@ -403,12 +404,18 @@ class _CommentPageState extends State<CommentPage> {
                                 ),
                                 child: TextField(
                                   controller: _editController,
+                                  maxLength: 140,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _commentText = value;
+                                    });
+                                  },
                                   decoration: InputDecoration(
                                       labelText:
                                           "${I18n.of(context).reply_to} ${parentCommentName == null ? "illust" : parentCommentName}",
                                       suffixIcon: IconButton(
                                           icon: Icon(
-                                            Icons.reply,
+                                            Icons.send,
                                           ),
                                           onPressed: () async {
                                             final client = apiClient;
@@ -436,6 +443,7 @@ class _CommentPageState extends State<CommentPage> {
                                                           parentCommentId);
                                               }
                                               _editController.clear();
+                                              HapticUtil.medium();
                                               _store.fetch();
                                             } catch (e) {
                                               print(e);
@@ -462,6 +470,22 @@ class _CommentPageState extends State<CommentPage> {
     );
   }
 
+  SelectionArea _buildCommentContent(BuildContext context, Comment comment) {
+    return SelectionArea(
+      focusNode: _focusNode,
+      contextMenuBuilder: (context, selectableRegionState) {
+        return _buildSelectionMenu(
+            selectableRegionState, context, supportTranslate);
+      },
+      onSelectionChanged: (value) {
+        _selectedText = value?.plainText ?? "";
+      },
+      child: CommentEmojiText(
+        text: comment.comment ?? "",
+      ),
+    );
+  }
+
   Widget _buildTrailingRow(Comment comment, BuildContext context) {
     return Row(
       children: [
@@ -475,7 +499,7 @@ class _CommentPageState extends State<CommentPage> {
             },
             child: Text(
               widget.isReplay ? "" : I18n.of(context).reply,
-              style: TextStyle(color: Theme.of(context).colorScheme.secondary),
+              style: TextStyle(color: Theme.of(context).colorScheme.secondary, fontSize: 12),
             )),
         if (!widget.isReplay)
           Padding(
@@ -517,9 +541,56 @@ class _CommentPageState extends State<CommentPage> {
                         );
                       });
                 },
-                child: Icon(Icons.more_horiz)),
+                child: Icon(Icons.more_horiz, color: Theme.of(context).colorScheme.secondary)),
           )
       ],
     );
+  }
+
+  bool supportTranslate = false;
+  String _selectedText = "";
+
+  AdaptiveTextSelectionToolbar _buildSelectionMenu(
+      SelectableRegionState editableTextState,
+      BuildContext context,
+      bool supportTranslate) {
+    final List<ContextMenuButtonItem> buttonItems =
+        editableTextState.contextMenuButtonItems;
+    if (supportTranslate) {
+      buttonItems.insert(
+        buttonItems.length,
+        ContextMenuButtonItem(
+          label: I18n.of(context).translate,
+          onPressed: () async {
+            final selectionText = _selectedText;
+            if (Platform.isIOS) {
+              final box = context.findRenderObject() as RenderBox?;
+              final pos = box != null
+                  ? box.localToGlobal(Offset.zero) & box.size
+                  : null;
+              SharePlus.instance.share(
+                  ShareParams(text: selectionText, sharePositionOrigin: pos));
+              return;
+            }
+            await SupportorPlugin.start(selectionText);
+            ContextMenuController.removeAny();
+          },
+        ),
+      );
+    }
+    return AdaptiveTextSelectionToolbar.buttonItems(
+      anchors: editableTextState.contextMenuAnchors,
+      buttonItems: buttonItems,
+    );
+  }
+
+  Future<void> supportTranslateCheck() async {
+    if (!Platform.isAndroid) return;
+    bool results = await SupportorPlugin.processText();
+    if (mounted) {
+      setState(() {
+        supportTranslate = results;
+      });
+    }
   }
 }

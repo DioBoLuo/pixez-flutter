@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:pixez/component/pixiv_image.dart';
 import 'package:pixez/page/hello/recom/recom_user_page.dart';
 import 'package:pixez/page/hello/recom/recom_user_store.dart';
@@ -17,7 +17,7 @@ class _RecomUserRoadState extends State<RecomUserRoad> {
 
   @override
   void initState() {
-    _recomUserStore = widget.recomUserStore ?? RecomUserStore()
+    _recomUserStore = widget.recomUserStore ?? RecomUserStore(null)
       ..fetch();
     super.initState();
   }
@@ -71,8 +71,7 @@ class _RecomUserRoadState extends State<RecomUserRoad> {
         height: 40,
         width: 40,
         child: CircleAvatar(
-          backgroundImage: PixivProvider.url(
-              data.user.profileImageUrls.medium,
+          backgroundImage: PixivProvider.url(data.user.profileImageUrls.medium,
               preUrl: data.user.profileImageUrls.medium),
           radius: 100.0,
         ),

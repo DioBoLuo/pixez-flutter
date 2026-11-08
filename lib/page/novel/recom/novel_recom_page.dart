@@ -17,7 +17,7 @@
 import 'package:easy_refresh/easy_refresh.dart';
 import 'package:pixez/component/pixez_default_header.dart';
 import 'package:pixez/exts.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:pixez/component/pixiv_image.dart';
 import 'package:pixez/i18n.dart';
@@ -26,13 +26,16 @@ import 'package:pixez/network/api_client.dart';
 import 'package:pixez/page/novel/component/novel_bookmark_button.dart';
 import 'package:pixez/page/novel/component/novel_lighting_store.dart';
 import 'package:pixez/page/novel/viewer/novel_viewer.dart';
+import 'package:pixez/utils/haptic_util.dart';
+import 'package:pixez/page/novel/user/novel_users_page.dart';
 
 class NovelRecomPage extends StatefulWidget {
   @override
   _NovelRecomPageState createState() => _NovelRecomPageState();
 }
 
-class _NovelRecomPageState extends State<NovelRecomPage> {
+class _NovelRecomPageState extends State<NovelRecomPage>
+    with AutomaticKeepAliveClientMixin {
   late NovelLightingStore _store;
   late EasyRefreshController _easyRefreshController;
 
@@ -74,6 +77,7 @@ class _NovelRecomPageState extends State<NovelRecomPage> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return EasyRefresh.builder(
       header: PixezDefault.header(context),
       onRefresh: () => _store.fetch(),
@@ -113,6 +117,7 @@ class _NovelRecomPageState extends State<NovelRecomPage> {
       padding: const EdgeInsets.symmetric(horizontal: 4.0),
       child: InkWell(
         onTap: () {
+          HapticUtil.selectionClick();
           Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(
               builder: (BuildContext context) => NovelViewerPage(
                     id: novel.id,
@@ -152,16 +157,53 @@ class _NovelRecomPageState extends State<NovelRecomPage> {
                           Padding(
                             padding:
                                 const EdgeInsets.symmetric(horizontal: 8.0),
-                            child: Text(
-                              novel.user.name,
-                              maxLines: 1,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall!
-                                  .copyWith(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .secondary),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTap: () {
+                                    Navigator.of(context, rootNavigator: true).push(
+                                        MaterialPageRoute(
+                                            builder: (_) => NovelUsersPage(id: novel.user.id)));
+                                  },
+                                  child: Text(
+                                    novel.user.name,
+                                    maxLines: 1,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall!
+                                        .copyWith(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .secondary),
+                                  ),
+                                ),
+                                Padding(
+                                  padding: EdgeInsets.only(left: 8),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.article,
+                                        size: 12,
+                                        color: Theme.of(context)
+                                            .textTheme
+                                            .labelSmall!
+                                            .color,
+                                      ),
+                                      SizedBox(
+                                        width: 2,
+                                      ),
+                                      Text(
+                                        '${novel.textLength}',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .labelSmall,
+                                      )
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                           Padding(
@@ -207,4 +249,7 @@ class _NovelRecomPageState extends State<NovelRecomPage> {
       ),
     );
   }
+
+  @override
+  bool get wantKeepAlive => true;
 }

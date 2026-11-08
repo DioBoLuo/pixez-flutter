@@ -1,16 +1,18 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:pixez/i18n.dart';
 import 'package:pixez/lighting/lighting_store.dart';
 import 'package:pixez/main.dart';
 import 'package:pixez/network/api_client.dart';
 import 'package:pixez/page/novel/component/novel_lighting_list.dart';
+import 'package:pixez/utils/haptic_util.dart';
 
 class NovelRankPage extends StatefulWidget {
   @override
   _NovelRankPageState createState() => _NovelRankPageState();
 }
 
-class _NovelRankPageState extends State<NovelRankPage> {
+class _NovelRankPageState extends State<NovelRankPage>
+    with AutomaticKeepAliveClientMixin {
   final modeList = [
     "day",
     "day_male",
@@ -41,12 +43,16 @@ class _NovelRankPageState extends State<NovelRankPage> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     List<String> w = I18n.of(context).novel_mode_list.split(" ");
     return DefaultTabController(
       length: modeList.length,
       child: Scaffold(
         appBar: AppBar(
           title: TabBar(
+              onTap: (i) {
+                HapticUtil.selectionClick();
+              },
               indicatorSize: TabBarIndicatorSize.label,
               isScrollable: true,
               tabs: [
@@ -86,4 +92,7 @@ class _NovelRankPageState extends State<NovelRankPage> {
       ),
     );
   }
+
+  @override
+  bool get wantKeepAlive => true;
 }

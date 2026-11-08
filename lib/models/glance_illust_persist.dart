@@ -14,10 +14,15 @@
  *
  */
 
+import 'dart:async';
+import 'dart:io';
+import 'package:path/path.dart' as Path;
+
 import 'package:json_annotation/json_annotation.dart';
 import 'package:path/path.dart';
 import 'package:pixez/models/illust.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:path_provider_foundation/path_provider_foundation.dart';
 
 part 'glance_illust_persist.g.dart';
 
@@ -30,13 +35,18 @@ extension ListGlanceIllustExt on Iterable<Illusts> {
 extension GlanceIllustExt on Illusts {
   GlanceIllustPersist toGlanceIllustPersist(String type, int time) {
     return GlanceIllustPersist(
-        illustId: id,
-        userId: user.id,
-        pictureUrl: imageUrls.medium,
-        title: title,
-        userName: user.name,
-        time: time,
-        type: type);
+      illustId: id,
+      userId: user.id,
+      pictureUrl: imageUrls.medium,
+      originalUrl:
+          metaSinglePage?.originalImageUrl ??
+          metaPages.firstOrNull?.imageUrls?.original,
+      largeUrl: imageUrls.large,
+      title: title,
+      userName: user.name,
+      time: time,
+      type: type,
+    );
   }
 }
 
@@ -49,6 +59,10 @@ class GlanceIllustPersist {
   int userId;
   @JsonKey(name: 'picture_url')
   String pictureUrl;
+  @JsonKey(name: 'original_url')
+  String? originalUrl;
+  @JsonKey(name: 'large_url')
+  String? largeUrl;
   @JsonKey(name: 'user_name')
   String? userName;
   @JsonKey(name: "title")
@@ -57,15 +71,18 @@ class GlanceIllustPersist {
   String type;
   int time;
 
-  GlanceIllustPersist(
-      {this.id,
-      required this.illustId,
-      required this.userId,
-      required this.pictureUrl,
-      required this.time,
-      required this.title,
-      required this.userName,
-      required this.type});
+  GlanceIllustPersist({
+    this.id,
+    required this.illustId,
+    required this.userId,
+    required this.pictureUrl,
+    required this.originalUrl,
+    required this.largeUrl,
+    required this.time,
+    required this.title,
+    required this.userName,
+    required this.type,
+  });
 
   factory GlanceIllustPersist.fromJson(Map<String, dynamic> json) =>
       _$GlanceIllustPersistFromJson(json);
@@ -78,6 +95,8 @@ final String cid = "id";
 final String cillust_id = "illust_id";
 final String cuser_id = "user_id";
 final String cpicture_url = "picture_url";
+final String clarge_url = "large_url";
+final String coriginal_url = "original_url";
 final String ctitle = "title";
 final String cuser_name = "user_name";
 final String ctime = "time";
@@ -95,24 +114,60 @@ create table $tableIllustPersist (
   $cpicture_url text not null,
   $ctype text not null,
   $ctitle text,
+  $clarge_url text,
+  $coriginal_url text,
   $cuser_name text,
     $ctime integer not null
   )
 ''');
   }
 
+  Future<String> getPath() async {
+    if (Platform.isIOS) {
+      try {
+        final PathProviderFoundation providerFoundation =
+            PathProviderFoundation();
+        final path = await providerFoundation.getContainerPath(
+          appGroupIdentifier: "group.pixez",
+        );
+        final directory = Directory(Path.join(path!, "DB"));
+        if (!(await directory.exists())) {
+          await directory.create(recursive: true);
+        }
+        return directory.path;
+      } catch (e) {}
+    }
+    return await getDatabasesPath();
+  }
+
   Future open() async {
-    String databasesPath = (await getDatabasesPath());
+    String databasesPath = (await getPath());
     String path = join(databasesPath, 'glanceillustpersist.db');
     db = await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: (Database db, int version) async {
         var batch = db.batch();
         _createTableV2(batch);
         await batch.commit();
       },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        var batch = db.batch();
+        if (oldVersion < 2) {
+          _updateTableV1ToV2(batch);
+        }
+        await batch.commit();
+      },
     );
+  }
+
+  void _updateTableV1ToV2(Batch batch) {
+    batch.execute('''
+        ALTER TABLE $tableIllustPersist ADD $coriginal_url TEXT;
+            ''');
+    batch.execute('''
+        ALTER TABLE $tableIllustPersist ADD $clarge_url TEXT;
+    ''');
   }
 
   Future<GlanceIllustPersist> insert(GlanceIllustPersist todo) async {
@@ -120,26 +175,34 @@ create table $tableIllustPersist (
     if (result != null) {
       todo.id = result.id;
     }
-    todo.id = await db.insert(tableIllustPersist, todo.toJson(),
-        conflictAlgorithm: ConflictAlgorithm.replace);
+    todo.id = await db.insert(
+      tableIllustPersist,
+      todo.toJson(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
     return todo;
   }
 
   Future<int> insertAll(List<GlanceIllustPersist> todo) async {
     final batch = db.batch();
     for (var i in todo) {
-      batch.insert(tableIllustPersist, i.toJson(),
-          conflictAlgorithm: ConflictAlgorithm.replace);
+      batch.insert(
+        tableIllustPersist,
+        i.toJson(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
     }
-    batch.commit();
+    await batch.commit();
     return 0;
   }
 
   Future<GlanceIllustPersist?> getAccount(int illust_id) async {
-    List<Map<String, dynamic>> maps = await db.query(tableIllustPersist,
-        columns: [cid, cillust_id, cuser_id, cpicture_url, ctime, ctype],
-        where: '$cillust_id = ?',
-        whereArgs: [illust_id]);
+    List<Map<String, dynamic>> maps = await db.query(
+      tableIllustPersist,
+      columns: [cid, cillust_id, cuser_id, cpicture_url, ctime, ctype],
+      where: '$cillust_id = ?',
+      whereArgs: [illust_id],
+    );
     if (maps.length > 0) {
       return GlanceIllustPersist.fromJson(maps.first);
     }
@@ -148,20 +211,22 @@ create table $tableIllustPersist (
 
   Future<List<GlanceIllustPersist>> getLikeIllusts(String type) async {
     List<GlanceIllustPersist> result = [];
-    List<Map<String, dynamic>> maps = await db.query(tableIllustPersist,
-        columns: [
-          cid,
-          cillust_id,
-          cuser_id,
-          cpicture_url,
-          ctime,
-          ctype,
-          cuser_name,
-          ctitle
-        ],
-        where: '$ctype = ?',
-        whereArgs: ["${type}"],
-        orderBy: ctime);
+    List<Map<String, dynamic>> maps = await db.query(
+      tableIllustPersist,
+      columns: [
+        cid,
+        cillust_id,
+        cuser_id,
+        cpicture_url,
+        ctime,
+        ctype,
+        cuser_name,
+        ctitle,
+      ],
+      where: '$ctype = ?',
+      whereArgs: ["${type}"],
+      orderBy: ctime,
+    );
 
     if (maps.length > 0) {
       maps.forEach((f) {
@@ -173,18 +238,20 @@ create table $tableIllustPersist (
 
   Future<List<GlanceIllustPersist>> getAllAccount() async {
     List<GlanceIllustPersist> result = [];
-    List<Map<String, dynamic>> maps = await db.query(tableIllustPersist,
-        columns: [
-          cid,
-          cillust_id,
-          cuser_id,
-          cpicture_url,
-          ctime,
-          ctype,
-          cuser_name,
-          ctitle
-        ],
-        orderBy: ctime);
+    List<Map<String, dynamic>> maps = await db.query(
+      tableIllustPersist,
+      columns: [
+        cid,
+        cillust_id,
+        cuser_id,
+        cpicture_url,
+        ctime,
+        ctype,
+        cuser_name,
+        ctitle,
+      ],
+      orderBy: ctime,
+    );
 
     if (maps.length > 0) {
       maps.forEach((f) {
@@ -195,13 +262,20 @@ create table $tableIllustPersist (
   }
 
   Future<int> delete(int id) async {
-    return await db
-        .delete(tableIllustPersist, where: '$cillust_id = ?', whereArgs: [id]);
+    return await db.delete(
+      tableIllustPersist,
+      where: '$cillust_id = ?',
+      whereArgs: [id],
+    );
   }
 
   Future<int> update(GlanceIllustPersist todo) async {
-    return await db.update(tableIllustPersist, todo.toJson(),
-        where: '$cid = ?', whereArgs: [todo.id]);
+    return await db.update(
+      tableIllustPersist,
+      todo.toJson(),
+      where: '$cid = ?',
+      whereArgs: [todo.id],
+    );
   }
 
   Future close() async => db.close();

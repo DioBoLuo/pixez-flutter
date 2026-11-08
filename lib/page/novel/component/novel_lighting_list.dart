@@ -15,7 +15,7 @@
  */
 
 import 'package:easy_refresh/easy_refresh.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:pixez/component/pixez_default_header.dart';
 import 'package:pixez/component/pixiv_image.dart';
@@ -24,6 +24,7 @@ import 'package:pixez/lighting/lighting_store.dart';
 import 'package:pixez/models/novel_recom_response.dart';
 import 'package:pixez/page/novel/component/novel_bookmark_button.dart';
 import 'package:pixez/page/novel/component/novel_lighting_store.dart';
+import 'package:pixez/page/novel/user/novel_users_page.dart';
 import 'package:pixez/page/novel/viewer/novel_viewer.dart';
 import 'package:pixez/exts.dart';
 
@@ -78,7 +79,8 @@ class _NovelLightingListState extends State<NovelLightingList> {
           children: <Widget>[
             Padding(
               padding: const EdgeInsets.all(8.0),
-              child: Text(':(', style: Theme.of(context).textTheme.headlineMedium),
+              child:
+                  Text(':(', style: Theme.of(context).textTheme.headlineMedium),
             ),
             TextButton(
                 onPressed: () {
@@ -146,16 +148,53 @@ class _NovelLightingListState extends State<NovelLightingList> {
                               Padding(
                                 padding:
                                     const EdgeInsets.symmetric(horizontal: 8.0),
-                                child: Text(
-                                  novel.user.name,
-                                  maxLines: 1,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodySmall!
-                                      .copyWith(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .secondary),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onTap: () {
+                                        Navigator.of(context, rootNavigator: true).push(
+                                            MaterialPageRoute(
+                                                builder: (_) => NovelUsersPage(id: novel.user.id)));
+                                      },
+                                      child: Text(
+                                        novel.user.name,
+                                        maxLines: 1,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall!
+                                            .copyWith(
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .secondary),
+                                      ),
+                                    ),
+                                    Padding(
+                                      padding: EdgeInsets.only(left: 8),
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            Icons.article,
+                                            size: 12,
+                                            color: Theme.of(context)
+                                                .textTheme
+                                                .labelSmall!
+                                                .color,
+                                          ),
+                                          SizedBox(
+                                            width: 2,
+                                          ),
+                                          Text(
+                                            '${novel.textLength}',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .labelSmall,
+                                          )
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                               Padding(

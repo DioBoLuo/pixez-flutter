@@ -1,10 +1,10 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:bot_toast/bot_toast.dart';
 import 'package:dio/dio.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:pixez/er/lprinter.dart';
+import 'package:pixez/fluent/navigation_framework.dart';
 import 'package:pixez/fluent/page/hello/fluent_hello_page.dart';
 import 'package:pixez/fluent/page/hello/setting/save_eval_page.dart';
 import 'package:pixez/fluent/page/picture/illust_lighting_page.dart';
@@ -20,9 +20,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 class FluentLeader {
   static Future<void> pushUntilHome(BuildContext context) async {
-    Navigator.of(context).pushAndRemoveUntil(
+    Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
       FluentPageRoute(
-        builder: (context) => FluentHelloPage(),
+        builder: (context) => const FluentHelloPage(),
       ),
       // ignore: unnecessary_null_comparison
       (route) => route == null,
@@ -99,7 +99,7 @@ class FluentLeader {
           await accountProvider.insert(accountPersist);
           await accountStore.fetch();
           BotToast.showText(text: "Login Success");
-          if (Platform.isIOS) pushUntilHome(context);
+          pushUntilHome(context);
         } catch (e) {
           LPrinter.d(e);
           BotToast.showText(text: e.toString());
@@ -144,9 +144,12 @@ class FluentLeader {
     } else if (link.host.contains("novel")) {
       try {
         int id = int.parse(link.pathSegments.last);
-        Navigator.of(context).push(PixEzPageRoute(builder: (context) {
-          return NovelViewerPage(id: id);
-        }));
+        FluentLeader.push(
+          context,
+          NovelViewerPage(id: id),
+          title: Text(I18n.of(context).novel + ': ${id}'),
+          icon: Icon(FluentIcons.book_answers),
+        );
         return;
       } catch (e) {
         LPrinter.d(e);
@@ -210,12 +213,15 @@ class FluentLeader {
               icon: Icon(FluentIcons.account_browser),
             );
           else
-            Navigator.of(context).push(PixEzPageRoute(builder: (context) {
-              return NovelViewerPage(
+            FluentLeader.push(
+              context,
+              NovelViewerPage(
                 id: int.parse(id!),
                 novelStore: null,
-              );
-            }));
+              ),
+              title: Text(I18n.of(context).novel + ': ${id}'),
+              icon: Icon(FluentIcons.book_answers),
+            );
           return;
         } catch (e) {}
       }
@@ -275,30 +281,18 @@ class FluentLeader {
     Widget? title,
     bool forceSkipWrap = false,
   }) {
-    final _final = forceSkipWrap
-        ? widget
-        : widget is ScaffoldPage
-            ? widget
-            : ScaffoldPage(
-                content: widget,
-                padding: EdgeInsets.all(0.0),
-              );
+    assert(icon != null);
+    assert(title != null);
 
-    var state = context.findAncestorStateOfType<FluentHelloPageState>();
-    if (state == null) state = FluentHelloPageState.state;
-    assert(state != null);
-    if (icon == null || title == null) {
-      debugPrint('icon: $icon');
-      debugPrint('title: $title');
-      debugPrintStack();
-    }
-    return state!.push(
+    Widget _final = widget;
+    if (!forceSkipWrap && _final is! ScaffoldPage)
+      _final = ScaffoldPage(content: widget, padding: EdgeInsets.all(0.0));
+
+    return PixEzNavigator.push(
       context,
-      PixEzPageRoute(
-        builder: (_) => _final,
-        icon: icon ?? const Icon(FluentIcons.unknown),
-        title: title ?? Text(I18n.of(context).undefined),
-      ),
+      builder: (_) => _final,
+      icon: icon ?? const Icon(FluentIcons.unknown),
+      title: title ?? Text(I18n.of(context).undefined),
     );
   }
 }

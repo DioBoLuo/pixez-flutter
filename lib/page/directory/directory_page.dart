@@ -17,7 +17,7 @@
 import 'dart:io';
 
 import 'package:bot_toast/bot_toast.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:mobx/mobx.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -42,7 +42,7 @@ class _DirectoryPageState extends State<DirectoryPage> {
     super.initState();
     _initMethod();
     final dispose = reaction((_) => directoryStore.checkSuccess, (value) {
-      if (value as bool) Navigator.of(context).pop(directoryStore.path);
+      if (value) Navigator.of(context).pop(directoryStore.path);
     });
     dispose();
   }

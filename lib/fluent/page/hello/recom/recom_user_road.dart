@@ -1,4 +1,5 @@
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:material_ui/material_ui.dart' show CircleAvatar;
 import 'package:pixez/fluent/component/pixiv_image.dart';
 import 'package:pixez/er/leader.dart';
 import 'package:pixez/i18n.dart';
@@ -19,7 +20,7 @@ class _RecomUserRoadState extends State<RecomUserRoad> {
 
   @override
   void initState() {
-    _recomUserStore = widget.recomUserStore ?? RecomUserStore()
+    _recomUserStore = widget.recomUserStore ?? RecomUserStore(null)
       ..fetch();
     super.initState();
   }
@@ -32,7 +33,7 @@ class _RecomUserRoadState extends State<RecomUserRoad> {
       child: ButtonTheme(
         data: ButtonThemeData(
           iconButtonStyle: ButtonStyle(
-            padding: ButtonState.all(EdgeInsets.zero),
+            padding: WidgetStateProperty.all(EdgeInsets.zero),
           ),
         ),
         child: IconButton(

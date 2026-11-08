@@ -49,7 +49,7 @@ class _SelectableHtmlState extends State<SelectableHtml> {
           if (e.attributes.containsKey('href')) {
             final color = FluentTheme.of(context).accentColor;
             return {
-              'color': '#${color.value.toRadixString(16).substring(2, 8)}'
+              'color': '#${color.colorValue.toRadixString(16).substring(2, 8)}'
             };
           }
           return null;
@@ -63,7 +63,7 @@ class _SelectableHtmlState extends State<SelectableHtml> {
               await launchUrl(Uri.parse(url),
                   mode: LaunchMode.externalNonBrowserApplication);
           } catch (e) {
-            Share.share(url);
+            SharePlus.instance.share(ShareParams(text: url));
           }
           return true;
         },

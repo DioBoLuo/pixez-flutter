@@ -14,7 +14,7 @@
  *
  */
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:pixez/i18n.dart';
 import 'package:pixez/page/picture/illust_lighting_page.dart';
@@ -75,7 +75,7 @@ class _SauceNaoPageState extends State<SauceNaoPage> {
             Card(
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 16.0),
-                child: Center(child: Text('SauceNao')),
+                child: Center(child: Text('SauceNAO')),
               ),
             ),
             Observer(builder: (_) {

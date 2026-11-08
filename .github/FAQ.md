@@ -106,9 +106,6 @@
 
 另外，**请不要删除这个文件夹**（主动删除或使用空文件夹清理等功能误删）——删除之后，应用本身没有再次创建文件夹的权限，会导致之后保存图片失败。解决方法也很简单，重新建立文件夹即可。
 
-|![Preview](https://cdn.jsdelivr.net/gh/Romani-Archman/mycdn@1.3/img/1.jpg) | ![Preview](https://cdn.jsdelivr.net/gh/Romani-Archman/mycdn@1.3/img/2.jpg) | ![Preview](https://cdn.jsdelivr.net/gh/Romani-Archman/mycdn@1.3/img/3.jpg) | ![Preview](https://cdn.jsdelivr.net/gh/Romani-Archman/mycdn@1.3/img/4.jpg) | ![Preview](https://cdn.jsdelivr.net/gh/Romani-Archman/mycdn@1.3/img/5.jpg) |
-|:---:|:---:|:---:|:---:|:---:|
-
 #### 传统模式
 
 我们同样推荐选择保存在 `Pictures/PixEz` （完整路径可能是 `/storage/emulated/0/Pictures/PixEz`）下。
@@ -185,7 +182,7 @@ e.g. {illust_id}_p{part} 即「插画ID\_p第几张」
 
 如果你有什么好的建议，可以提 Issue，或者去 [README](https://github.com/Notsfsssf/pixez-flutter) 中提到的 Telegram 群组里反馈。如果是下载问题，就去企鹅群：1005400557
 
-提问前最好阅读[《提问的智慧》](http://archman.fun/2020/09/24/%E6%8F%90%E9%97%AE%E7%9A%84%E6%99%BA%E6%85%A7/)，拒绝 TCP 三次握手式提问，以及 DDoS 式轰炸提问。大多数群员都是友好的，希望你也能同样友好，互相理解最好啦。
+提问前最好阅读[《提问的智慧》](https://github.com/ryanhanwu/How-To-Ask-Questions-The-Smart-Way/blob/main/README-zh_CN.md)，拒绝 TCP 三次握手式提问，以及 DDoS 式轰炸提问。大多数群员都是友好的，希望你也能同样友好，互相理解最好啦。
 
 ### 本FAQ被以下人数阅读,谢谢你们的配合:)
 

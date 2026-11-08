@@ -14,11 +14,11 @@
  *
  */
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:pixez/i18n.dart';
 import 'package:pixez/models/create_user_response.dart';
 import 'package:pixez/network/account_client.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:url_launcher/url_launcher_string.dart';
 
 class CreateUserPage extends StatefulWidget {
   @override
@@ -108,7 +108,7 @@ class _CreateUserPageState extends State<CreateUserPage> {
                   onPressed: () async {
                     final url = 'https://www.pixiv.net/terms/?page=term';
                     try {
-                      await launch(url);
+                      await launchUrlString(url);
                     } catch (e) {}
                   },
                 ),

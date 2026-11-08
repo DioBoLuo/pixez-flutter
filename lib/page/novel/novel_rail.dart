@@ -14,7 +14,7 @@
  */
 import 'dart:io';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:pixez/constants.dart';
 import 'package:pixez/i18n.dart';
 import 'package:pixez/main.dart';
@@ -23,6 +23,7 @@ import 'package:pixez/page/hello/hello_page.dart';
 import 'package:pixez/page/hello/setting/setting_page.dart';
 import 'package:pixez/page/novel/new/novel_new_page.dart';
 import 'package:pixez/page/novel/rank/novel_rank_page.dart';
+import 'package:pixez/utils/haptic_util.dart';
 import 'package:pixez/page/novel/recom/novel_recom_page.dart';
 import 'package:pixez/page/novel/search/novel_search_page.dart';
 
@@ -59,23 +60,27 @@ class _NovelRailState extends State<NovelRail> {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
+    return PopScope(
+      onPopInvokedWithResult: (didPop, result) async {
         userSetting.setAnimContainer(!userSetting.animContainer);
+        if (didPop) return;
         if (!userSetting.isReturnAgainToExit) {
-          return true;
+          return;
         }
         if (_preTime == null ||
             DateTime.now().difference(_preTime!) > Duration(seconds: 2)) {
-          _preTime = DateTime.now();
+          setState(() {
+            _preTime = DateTime.now();
+          });
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             duration: Duration(seconds: 1),
             content: Text(I18n.of(context).return_again_to_exit),
           ));
-          return false;
         }
-        return true;
       },
+      canPop: !userSetting.isReturnAgainToExit ||
+          _preTime != null &&
+              DateTime.now().difference(_preTime!) <= Duration(seconds: 2),
       child: Scaffold(
         floatingActionButton: FloatingActionButton(
           onPressed: () {
@@ -121,6 +126,7 @@ class _NovelRailState extends State<NovelRail> {
       ],
       selectedIndex: selectedIndex,
       onDestinationSelected: (index) {
+        HapticUtil.selectionClick();
         if (this.selectedIndex == index) {
           topStore.setTop("${index + 1}00");
         }

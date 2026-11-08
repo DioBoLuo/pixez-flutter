@@ -1,65 +1,87 @@
 import 'dart:convert';
-import 'dart:typed_data';
+import 'dart:io';
 
-import 'package:mobx/mobx.dart';
+import 'package:fluent_ui/fluent_ui.dart';
+import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:pixez/er/sharer.dart';
 import 'package:pixez/models/illust.dart';
 import 'package:pixez/models/illust_persist.dart';
 import 'package:pixez/saf_plugin.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+part 'history_store.freezed.dart';
 part 'history_store.g.dart';
 
-class HistoryStore = _HistoryStoreBase with _$HistoryStore;
+@freezed
+abstract class HistoryState with _$HistoryState {
+  const factory HistoryState({
+    required List<IllustPersist> data,
+    required String word,
+  }) = _HistoryState;
+}
 
-abstract class _HistoryStoreBase with Store {
-  IllustPersistProvider illustPersistProvider = IllustPersistProvider();
-  ObservableList<IllustPersist> data = ObservableList();
-  @observable
-  var word = "";
+@Riverpod(keepAlive: true)
+class History extends Notifier<HistoryState> {
+  final illustPersistProvider = IllustPersistProvider();
+  @override
+  HistoryState build() {
+    return HistoryState(data: [], word: "");
+  }
 
-  @action
-  fetch() async {
+  Future<void> fetch() async {
     await illustPersistProvider.open();
     final result = await illustPersistProvider.getAllAccount();
-    data.clear();
-    data.addAll(result);
+    state = state.copyWith(data: result);
   }
 
-  @action
-  search(String word) async {
+  Future<void> search(String word) async {
     await illustPersistProvider.open();
     final result = await illustPersistProvider.getLikeIllusts(word);
-    data.clear();
-    data.addAll(result);
+    state = state.copyWith(data: result);
   }
 
-  @action
-  insert(Illusts illust) async {
+  Future<void> insert(Illusts illust) async {
     await illustPersistProvider.open();
     var illustPersist = IllustPersist(
-        illustId: illust.id,
-        userId: illust.user.id,
-        pictureUrl: illust.imageUrls.squareMedium,
-        time: DateTime.now().millisecondsSinceEpoch,
-        title: illust.title,
-        userName: illust.user.name);
+      illustId: illust.id,
+      userId: illust.user.id,
+      pictureUrl: illust.imageUrls.squareMedium,
+      time: DateTime.now().millisecondsSinceEpoch,
+      title: illust.title,
+      userName: illust.user.name,
+    );
     await illustPersistProvider.insert(illustPersist);
     await fetch();
   }
 
-  @action
-  delete(int id) async {
+  static Future<void> insertIllust(Illusts illust) async {
+    final illustPersistProvider = IllustPersistProvider();
+    await illustPersistProvider.open();
+    var illustPersist = IllustPersist(
+      illustId: illust.id,
+      userId: illust.user.id,
+      pictureUrl: illust.imageUrls.squareMedium,
+      time: DateTime.now().millisecondsSinceEpoch,
+      title: illust.title,
+      userName: illust.user.name,
+    );
+    await illustPersistProvider.insert(illustPersist);
+  }
+
+  Future<void> delete(int id) async {
     await illustPersistProvider.open();
     await illustPersistProvider.delete(id);
     await fetch();
   }
 
-  deleteAll() async {
+  Future<void> deleteAll() async {
     await illustPersistProvider.open();
     await illustPersistProvider.deleteAll();
     await fetch();
   }
 
-  importData() async {
+  Future<void> importData() async {
     final result = await SAFPlugin.openFile();
     if (result == null) return;
     final json = utf8.decode(result);
@@ -68,22 +90,30 @@ abstract class _HistoryStoreBase with Store {
     maps.forEach((illust) {
       var illustMap = Map.from(illust);
       var illustPersist = IllustPersist(
-          illustId: illustMap['illust_id'],
-          userId: illustMap['user_id'],
-          pictureUrl: illustMap['picture_url'],
-          time: illustMap['time'],
-          title: illustMap['title'],
-          userName: illustMap['user_name']);
+        illustId: illustMap['illust_id'],
+        userId: illustMap['user_id'],
+        pictureUrl: illustMap['picture_url'],
+        time: illustMap['time'],
+        title: illustMap['title'],
+        userName: illustMap['user_name'],
+      );
       illustPersistProvider.insert(illustPersist);
     });
   }
-  exportData() async {
-    final uriStr =
-        await SAFPlugin.createFile("illustpersist.json", "application/json");
-    if (uriStr == null) return;
+
+  Future<void> exportData(BuildContext context) async {
     await illustPersistProvider.open();
     final exportData = await illustPersistProvider.getAllAccount();
-    await SAFPlugin.writeUri(uriStr,
-        Uint8List.fromList(utf8.encode(jsonEncode(exportData))));
+    final uint8List = utf8.encode(jsonEncode(exportData));
+    if (Platform.isIOS) {
+      await Sharer.exportUint8List(context, uint8List, "illustpersist.json");
+    } else {
+      final uriStr = await SAFPlugin.createFile(
+        "illustpersist.json",
+        "application/json",
+      );
+      if (uriStr == null) return;
+      await SAFPlugin.writeUri(uriStr, uint8List);
+    }
   }
 }

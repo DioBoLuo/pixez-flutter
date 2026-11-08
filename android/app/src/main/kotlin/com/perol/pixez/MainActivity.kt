@@ -18,58 +18,59 @@ package com.perol.pixez
 
 import android.Manifest
 import android.app.Activity
+import android.appwidget.AppWidgetManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
-import android.content.pm.ResolveInfo
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.PersistableBundle
 import android.provider.DocumentsContract
 import android.webkit.MimeTypeMap
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.lifecycleScope
+import com.perol.pixez.plugin.CustomTab
+import com.perol.pixez.plugin.DeepLinkPlugin
+import com.perol.pixez.plugin.JsEvalPlugin
+import com.perol.pixez.plugin.OpenSettinger
+import com.perol.pixez.plugin.Safer
+import com.perol.pixez.plugin.SecurePlugin
+import com.perol.pixez.plugin.SupporterPlugin
+import com.perol.pixez.plugin.Weiss
+import com.perol.pixez.plugin.exist
+import com.perol.pixez.plugin.save
+import com.perol.pixez.plugin.writeBytesOrDelete
 import com.waynejo.androidndkgif.GifEncoder
 import io.flutter.Log
-import io.flutter.embedding.android.FlutterFragmentActivity
+import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
-import io.flutter.plugins.GeneratedPluginRegistrant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.*
 
-class MainActivity : FlutterFragmentActivity() {
+class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.perol.dev/save"
     private val ENCODE_CHANNEL = "samples.flutter.dev/battery"
-    private val SUPPORTER_CHANNEL = "com.perol.dev/supporter"
-    var saveMode = 0
+    private val APP_WIDGET_CHANNEL = "com.perol.dev/app_widget"
+    private var saveMode = 0
     private val OPEN_DOCUMENT_TREE_CODE = 190
     private val PICK_IMAGE_FILE = 2
-    var pendingResult: MethodChannel.Result? = null
-    var pendingPickResult: MethodChannel.Result? = null
-    var helplessPath: String? = null
+    private var pendingResult: MethodChannel.Result? = null
+    private var pendingPickResult: MethodChannel.Result? = null
+    private var helplessPath: String? = null
     private val SHARED_PREFERENCES_NAME = "FlutterSharedPreferences"
-    lateinit var sharedPreferences: SharedPreferences
-
-    val requestPermissionLauncher =
-        registerForActivityResult(
-            ActivityResultContracts.RequestPermission()
-        ) { isGranted: Boolean ->
-            pendingPickResult?.success(isGranted)
-            pendingPickResult = null
-        }
+    private lateinit var sharedPreferences: SharedPreferences
 
     override fun onCreate(savedInstanceState: Bundle?) {
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -80,6 +81,10 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     private val savingPools = Collections.synchronizedList(arrayListOf<String>())
+
+    // Saves run concurrently on Dispatchers.IO; finding or creating a SAF
+    // folder must not interleave, or the provider creates "name (1)" copies.
+    private val safFolderLock = Any()
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -93,83 +98,25 @@ class MainActivity : FlutterFragmentActivity() {
         CustomTab.bindChannel(this, flutterEngine)
         Safer.bindChannel(this, flutterEngine)
         JsEvalPlugin(this).bindChannel(flutterEngine)
-        MethodChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            SUPPORTER_CHANNEL
-        ).setMethodCallHandler { call, result ->
-            if (call.method == "exit") {
-                finishAndRemoveTask()
-            }
-            if (call.method == "process_text") {
-                try {
-                    val queryIntentActivities =
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            packageManager.queryIntentActivities(
-                                Intent().apply {
-                                    type = "text/plain"
-                                    action = Intent.ACTION_PROCESS_TEXT
-                                },
-                                PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_DEFAULT_ONLY.toLong())
-                            )
-                        } else {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                                packageManager.queryIntentActivities(
-                                    Intent(Intent.ACTION_PROCESS_TEXT).apply {
-                                        type = "text/plain"
-                                    },
-                                    0
-                                )
-                            } else {
-                                packageManager.queryIntentActivities(
-                                    Intent(Intent.ACTION_SEND).apply {
-                                        type = "text/plain"
-                                    },
-                                    0
-                                )
-                            }
-                        }
-                    result.success(queryIntentActivities.isNotEmpty())
-                } catch (ignore: Throwable) {
-
-                }
-                result.success(false)
-            }
-            if (call.method == "process") {
-                val text = call.argument<String>("text")
-                val intent = Intent()
-                    .setType("text/plain")
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    intent.action = Intent.ACTION_PROCESS_TEXT
-                    intent.putExtra(Intent.EXTRA_PROCESS_TEXT, text)
-                } else {
-                    intent.action = Intent.ACTION_SEND
-                    intent.putExtra(Intent.EXTRA_TEXT, text)
-                }
-                result.success(0)
-                try {
-                    startActivity(intent)
-
-                } catch (_: Throwable) {
-                }
-            }
-        }
+        SecurePlugin(this).bindChannel(flutterEngine)
+        SupporterPlugin().bindChannel(this, flutterEngine)
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             CHANNEL
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "requestPermission" -> {
-                    //TODO wait permission handler plugin
                     if (Build.VERSION.SDK_INT >= 33) {
-                        requestPermissionLauncher.launch(
-                            Manifest.permission.READ_MEDIA_IMAGES
-                        )
-                        pendingPickResult = result
+                        result.success(true)
                     }
                 }
 
                 "permissionStatus" -> {
                     if (Build.VERSION.SDK_INT >= 33) {
+                        if (BuildConfig.IS_GOOGLEPLAY) {
+                            result.success(true)
+                            return@setMethodCallHandler
+                        }
                         val checkSelfPermission = ContextCompat.checkSelfPermission(
                             this,
                             Manifest.permission.READ_MEDIA_IMAGES
@@ -179,8 +126,12 @@ class MainActivity : FlutterFragmentActivity() {
                 }
 
                 "save" -> {
-                    val data = call.argument<ByteArray>("data")!!
-                    val name = call.argument<String>("name")!!
+                    val data = call.argument<ByteArray>("data")
+                    val name = call.argument<String>("name")
+                    if (data == null || name == null) {
+                        result.error("INVALID_ARGS", "data and name are required", null)
+                        return@setMethodCallHandler
+                    }
                     var clearOld = call.argument<Boolean>("clear_old")
                     saveMode = call.argument<Int>("save_mode") ?: 0
                     if (clearOld == null)
@@ -190,19 +141,23 @@ class MainActivity : FlutterFragmentActivity() {
                     savingPools.add(name)
                     lifecycleScope.launch {
                         try {
+                            var saved = false
                             when (saveMode) {
                                 0 -> {
                                     val path = withContext(Dispatchers.IO) {
                                         save(data, name)
-                                    } ?: return@launch
-                                    MediaScannerConnection.scanFile(
-                                        this@MainActivity,
-                                        arrayOf(path),
-                                        arrayOf(
-                                            MimeTypeMap.getSingleton()
-                                                .getMimeTypeFromExtension(File(path).extension)
-                                        )
-                                    ) { _, _ ->
+                                    }
+                                    if (path != null) {
+                                        saved = true
+                                        MediaScannerConnection.scanFile(
+                                            this@MainActivity,
+                                            arrayOf(path),
+                                            arrayOf(
+                                                MimeTypeMap.getSingleton()
+                                                    .getMimeTypeFromExtension(File(path).extension)
+                                            )
+                                        ) { _, _ ->
+                                        }
                                     }
                                 }
 
@@ -225,7 +180,7 @@ class MainActivity : FlutterFragmentActivity() {
                                         if (!file.exists()) {
                                             file.createNewFile()
                                         }
-                                        file.outputStream().write(data)
+                                        file.writeBytesOrDelete(data)
                                         if (clearOld && name.contains("_p0")) {
                                             val oldFileName = name.replace("_p0", "")
                                             val oldFile = File("$helplessPath", oldFileName)
@@ -244,19 +199,110 @@ class MainActivity : FlutterFragmentActivity() {
                                     ) { _, _ ->
                                     }
 
+                                    saved = true
                                 }
 
                                 1 -> {
                                     withContext(Dispatchers.IO) {
-                                        writeFileUri(name, clearOld)?.let {
-                                            wr(data, it)
+                                        val uri = writeFileUri(name, clearOld)
+                                        if (uri != null) {
+                                            wr(data, uri)
+                                            saved = true
                                         }
                                     }
                                 }
                             }
-                            result.success(true)
+                            result.success(saved)
                         } catch (e: Throwable) {
-                            Log.d("x=====", "${e.message}")
+                            Log.d("Save", "${e.message}")
+                            result.success(false)
+                        } finally {
+                            savingPools.remove(name)
+                        }
+                    }
+                }
+
+                "saveFromPath" -> {
+                    val sourcePath = call.argument<String>("source_path")
+                    val name = call.argument<String>("name")
+                    if (sourcePath == null || name == null) {
+                        result.error("INVALID_ARGS", "source_path and name are required", null)
+                        return@setMethodCallHandler
+                    }
+                    var clearOld = call.argument<Boolean>("clear_old")
+                    saveMode = call.argument<Int>("save_mode") ?: 0
+                    if (clearOld == null)
+                        clearOld = false
+                    if (savingPools.contains(name))
+                        return@setMethodCallHandler;
+                    savingPools.add(name)
+                    lifecycleScope.launch {
+                        try {
+                            val sourceFile = File(sourcePath)
+                            var saved = false
+                            when (saveMode) {
+                                0 -> {
+                                    val data = withContext(Dispatchers.IO) {
+                                        sourceFile.readBytes()
+                                    }
+                                    val path = save(data, name)
+                                    if (path != null) {
+                                        saved = true
+                                        MediaScannerConnection.scanFile(
+                                            this@MainActivity,
+                                            arrayOf(path),
+                                            arrayOf(
+                                                MimeTypeMap.getSingleton()
+                                                    .getMimeTypeFromExtension(File(path).extension)
+                                            )
+                                        ) { _, _ ->
+                                        }
+                                    }
+                                }
+
+                                2 -> {
+                                    val target = File("$helplessPath/$name")
+                                    withContext(Dispatchers.IO) {
+                                        val dirPath = target.parent
+                                        val dirFile = File(dirPath)
+                                        if (!dirFile.exists()) {
+                                            dirFile.mkdirs()
+                                        }
+                                        try {
+                                            sourceFile.copyTo(target, overwrite = true)
+                                        } catch (e: Throwable) {
+                                            target.delete()
+                                            throw e
+                                        }
+                                    }
+                                    saved = true
+                                    MediaScannerConnection.scanFile(
+                                        this@MainActivity,
+                                        arrayOf(target.path),
+                                        arrayOf(
+                                            MimeTypeMap.getSingleton()
+                                                .getMimeTypeFromExtension(target.extension)
+                                        )
+                                    ) { _, _ ->
+                                    }
+                                }
+
+                                1 -> {
+                                    withContext(Dispatchers.IO) {
+                                        val uri = writeFileUri(name, clearOld)
+                                        if (uri != null) {
+                                            val data = sourceFile.readBytes()
+                                            wr(data, uri)
+                                            saved = true
+                                        }
+                                    }
+                                }
+                            }
+                            sourceFile.delete()
+                            result.success(saved)
+                        } catch (e: Throwable) {
+                            Log.d("SaveFromPath", "${e.message}")
+                            result.success(false)
                         } finally {
                             savingPools.remove(name)
                         }
@@ -299,21 +345,48 @@ class MainActivity : FlutterFragmentActivity() {
             ENCODE_CHANNEL
         ).setMethodCallHandler { call, result ->
             if (call.method == "getBatteryLevel") {
-                val name = call.argument<String>("name")!!
                 val path = call.argument<String>("path")!!
                 val delay = call.argument<Int>("delay")!!
                 val delayArray = call.argument<List<Int>>("delay_array")!!
                 lifecycleScope.launch {
-                    withContext(Dispatchers.IO) {
-                        encodeGif(name, path, delay, delayArray)
+                    val gifPath = withContext(Dispatchers.IO) {
+                        encodeGif(path, delay, delayArray)
                     }
-                    Toast.makeText(
-                        this@MainActivity,
-                        getString(R.string.encode_success),
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    result.success(true)
+                    if (gifPath != null) {
+                        result.success(gifPath)
+                    } else {
+                        result.error("ENCODE_FAILED", "GIF encoding failed", null)
+                    }
                 }
+            }
+        }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            APP_WIDGET_CHANNEL
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "setRecommendType" -> {
+                    val type = call.argument<String>("type") ?: "recom"
+                    sharedPreferences.edit().putString("flutter.widget_illust_type", type).apply()
+                    refreshAppWidgets()
+                    result.success(null)
+                }
+
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    private fun refreshAppWidgets() {
+        val appWidgetManager = AppWidgetManager.getInstance(this)
+        listOf(SquareAppWidget::class.java, IllustCardAppWidget::class.java).forEach { widgetClass ->
+            val componentName = ComponentName(this, widgetClass)
+            val widgetIds = appWidgetManager.getAppWidgetIds(componentName)
+            if (widgetIds.isNotEmpty()) {
+                sendBroadcast(Intent(AppWidgetManager.ACTION_APPWIDGET_UPDATE).apply {
+                    component = componentName
+                    putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, widgetIds)
+                })
             }
         }
     }
@@ -392,99 +465,49 @@ class MainActivity : FlutterFragmentActivity() {
         return list.first().uri.toString()
     }
 
-    private fun encodeGif(name: String, path: String, delay: Int, delayArray: List<Int>) {
-
+    private fun encodeGif(path: String, delay: Int, delayArray: List<Int>): String? {
         val file = File(path)
-        file.let {
-            val tempFile = File(
-                applicationContext.cacheDir, "${
-                    if (name.contains("/")) {
-                        name.split("/").last()
-                    } else {
-                        name
-                    }
-                }.gif"
-            )
-            try {
-                val fileName = "${name}.gif"
-                if (saveMode == 0) {
-                    if (exist(fileName))
-                        return
-                }
-                /*                if (!tempFile.exists()) {
-                                    tempFile.createNewFile()
-                                }*/
-                Log.d("tempFile path:", tempFile.path)
-                val listFiles = it.listFiles()
-                if (listFiles == null || listFiles.isEmpty()) {
-                    throw RuntimeException("unzip files not found")
-                }
-                val arrayFile = mutableListOf<File>()
-                for (i in listFiles) {
-                    if (i.name.contains("jpg") || i.name.contains("png")) {
-                        arrayFile.add(i)
-                    }
-                }
-                arrayFile.sortWith { o1, o2 -> o1.name.compareTo(o2.name) }
-                val bitmap: Bitmap = BitmapFactory.decodeFile(arrayFile.first().path)
-                val encoder = GifEncoder()
-                encoder.init(
-                    bitmap.width,
-                    bitmap.height,
-                    tempFile.path,
-                    GifEncoder.EncodingType.ENCODING_TYPE_STABLE_HIGH_MEMORY
-                )
-                for (i in arrayFile.indices) {
-                    val trueDelay = if (i < delayArray.size) {
-                        delayArray[i]
-                    } else {
-                        delay
-                    }
-                    if (i != 0) {
-                        encoder.encodeFrame(BitmapFactory.decodeFile(arrayFile[i].path), trueDelay)
-                    } else encoder.encodeFrame(bitmap, trueDelay)
-                }
-                encoder.close()
-                if (saveMode == 0) {
-                    save(tempFile.readBytes(), fileName)?.let {
-                        MediaScannerConnection.scanFile(
-                            this@MainActivity,
-                            arrayOf(it),
-                            arrayOf(
-                                MimeTypeMap.getSingleton()
-                                    .getMimeTypeFromExtension(File(it).extension)
-                            )
-                        ) { _, _ ->
-                        }
-                    }
-                    return
-                }
-                if (saveMode == 2) {
-                    val target = File("$helplessPath/$fileName")
-                    if (!target.exists()) {
-                        target.createNewFile()
-                    }
-                    tempFile.copyTo(target, overwrite = true)
-                    MediaScannerConnection.scanFile(
-                        this@MainActivity,
-                        arrayOf(target.path),
-                        arrayOf(
-                            MimeTypeMap.getSingleton()
-                                .getMimeTypeFromExtension(target.extension)
-                        )
-                    ) { _, _ ->
-                    }
-                    return
-                }
-                val uri = writeFileUri(fileName)
-                contentResolver.openOutputStream(uri!!, "w")?.use { outputStream ->
-                    outputStream.write(tempFile.inputStream().readBytes())
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                tempFile.delete()
-                it.deleteRecursively()
+        val tempFile = File.createTempFile("encode_", ".gif", applicationContext.cacheDir)
+        try {
+            val listFiles = file.listFiles()
+            if (listFiles == null || listFiles.isEmpty()) {
+                throw RuntimeException("unzip files not found")
             }
+            val arrayFile = mutableListOf<File>()
+            for (i in listFiles) {
+                val ext = i.extension.lowercase()
+                if (ext == "jpg" || ext == "jpeg" || ext == "png") {
+                    arrayFile.add(i)
+                }
+            }
+            arrayFile.sortWith { o1, o2 -> o1.name.compareTo(o2.name) }
+            val bitmap: Bitmap = BitmapFactory.decodeFile(arrayFile.first().path)
+            val encoder = GifEncoder()
+            encoder.init(
+                bitmap.width,
+                bitmap.height,
+                tempFile.path,
+                GifEncoder.EncodingType.ENCODING_TYPE_STABLE_HIGH_MEMORY
+            )
+            for (i in arrayFile.indices) {
+                val trueDelay = if (i < delayArray.size) {
+                    delayArray[i]
+                } else {
+                    delay
+                }
+                if (i != 0) {
+                    val bmp = BitmapFactory.decodeFile(arrayFile[i].path)
+                    encoder.encodeFrame(bmp, trueDelay)
+                    bmp.recycle()
+                } else encoder.encodeFrame(bitmap, trueDelay)
+            }
+            encoder.close()
+            bitmap.recycle()
+            return tempFile.absolutePath
+        } catch (e: Throwable) {
+            e.printStackTrace()
+            tempFile.delete()
+            return null
         }
     }
 
@@ -594,26 +617,20 @@ class MainActivity : FlutterFragmentActivity() {
         if (fileName.contains("/")) {
             val names = fileName.split("/")
             if (names.size >= 2) {
-                val fName = names.last()
-                val folderName = names.first()
-                if (clearOld && fName.contains("_p0"))
-                    treeDocument.findFile(fName.replace("_p0", ""))
-                var folderDocument = treeDocument.findFile(folderName)
-                if (folderDocument == null) {
-                    val tempFolderDocument = treeDocument.createDirectory(folderName)
-                    folderDocument = treeDocument.findFile(folderName)
-                    if (tempFolderDocument != null && folderDocument != null) {
-                        if (tempFolderDocument.uri != folderDocument.uri) {
-                            // 文件夹已经被创建过
-                            tempFolderDocument.delete()
+                try {
+                    var folderDocument: DocumentFile? = treeDocument
+                    val fName = names.last()
+                    val list = names.subList(0, names.size - 1)
+                    synchronized(safFolderLock) {
+                        for (name in list) {
+                            folderDocument = folderDocument!!.findFile(name)
+                                ?: folderDocument!!.createDirectory(name)!!
                         }
                     }
+                    return folderDocument?.createFile(mimeType, fName)?.uri
+                } catch (e: Throwable) {
+                    return null
                 }
-                val file = folderDocument?.findFile(fName)
-                if (file != null && file.exists()) {
-                    file.delete()
-                }
-                return folderDocument?.createFile(mimeType, fName)?.uri
             }
         }
         if (clearOld && fileName.contains("_p0"))
@@ -630,8 +647,17 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     private fun wr(data: ByteArray, uri: Uri) {
-        contentResolver.openOutputStream(uri, "w")?.use {
-            it.write(data)
+        try {
+            contentResolver.openOutputStream(uri, "w")?.use {
+                it.write(data)
+            }
+        } catch (e: Throwable) {
+            // Don't leave an empty document behind, e.g. when out of space.
+            try {
+                DocumentsContract.deleteDocument(contentResolver, uri)
+            } catch (_: Throwable) {
+            }
+            throw e
         }
     }
 }

@@ -13,11 +13,12 @@
  *  this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:pixez/i18n.dart';
 import 'package:pixez/main.dart';
 import 'package:pixez/page/search/result_illust_list.dart';
+import 'package:pixez/utils/haptic_util.dart';
 
 class BookTagPage extends StatefulWidget {
   @override
@@ -78,10 +79,35 @@ class _BookTagPageState extends State<BookTagPage>
             length: bookTagStore.bookTagList.length,
             vsync: this);
       }
+      if (bookTagStore.bookTagList.isEmpty) {
+        // Tags are added from the tag long-press menu on the detail page;
+        // without a hint the empty page looks broken.
+        return Scaffold(
+          appBar: AppBar(elevation: 0.0),
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Text(
+                I18n.of(context).favorited_tag_empty_hint,
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+          floatingActionButton: FloatingActionButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+            child: Icon(Icons.close),
+          ),
+        );
+      }
       return Scaffold(
         appBar: AppBar(
           elevation: 0.0,
           title: TabBar(
+            onTap: (i) {
+              HapticUtil.selectionClick();
+            },
             isScrollable: true,
             controller: _tabController,
             indicatorSize: TabBarIndicatorSize.label,
@@ -148,6 +174,7 @@ class _BookTagPageState extends State<BookTagPage>
             },
             confirmDismiss: (direction) async {
               await _deleteConfirm(_items[index]);
+              return null;
             },
             background: Container(
               color: Colors.red,

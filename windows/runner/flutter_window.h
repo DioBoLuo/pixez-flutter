@@ -3,11 +3,10 @@
 
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
+
 #include <memory>
 
 #include "win32_window.h"
-
-#include "SingleInstance.h"
 
 // A window that does nothing but host a Flutter view.
 class FlutterWindow : public Win32Window {

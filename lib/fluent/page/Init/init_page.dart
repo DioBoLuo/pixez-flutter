@@ -31,38 +31,25 @@ class _InitPageState extends State<InitPage> {
   @override
   Widget build(BuildContext context) {
     return ScaffoldPage(
-      content: Container(
-        child: Center(
+      header: PageHeader(title: Text(I18n.of(context).select_language)),
+      content: Center(
+        child: RadioGroup<int>(
+          groupValue: currentIndex,
+          onChanged: (v) async {
+            if (v == null) return;
+            await userSetting.setLanguageNum(v);
+            currentIndex = v;
+            setState(() {});
+          },
           child: Column(
-            children: <Widget>[
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Text(
-                  I18n.of(context).select_language,
-                  style: FluentTheme.of(context).typography.title,
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(32.0),
-                child: Center(
-                  child: Text("Select Language\n语言选择\n語言選擇\n言語を選択してください"),
-                ),
-              ),
-              ComboBox<int>(
-                value: userSetting.languageNum,
-                onChanged: (i) async {
-                  await userSetting.setLanguageNum(i ?? 0);
-                  setState(() {});
-                },
-                items: [
-                  for (int i = 0; i < languageList.length; i++)
-                    ComboBoxItem(
-                      child: Text(languageList[i]),
-                      value: i,
-                    )
-                ],
-              ),
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (int i = 0; i < languageList.length; i++) ...[
+                RadioButton(value: i, content: Text(languageList[i])),
+                if (i != languageList.length - 1) const SizedBox(height: 8),
+              ],
             ],
           ),
         ),

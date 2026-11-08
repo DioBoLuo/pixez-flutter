@@ -15,7 +15,6 @@
  */
 
 import 'package:fluent_ui/fluent_ui.dart';
-import 'package:flutter/material.dart' show SelectionArea;
 import 'package:flutter/services.dart';
 import 'package:pixez/fluent/component/selectable_html.dart';
 import 'package:pixez/er/leader.dart';
@@ -132,7 +131,7 @@ class _UserDetailPageState extends State<UserDetailPage> {
                           try {
                             await launchUrl(Uri.parse(url));
                           } catch (e) {
-                            Share.share(url);
+                            SharePlus.instance.share(ShareParams(text: url));
                           }
                         }),
                   ]),

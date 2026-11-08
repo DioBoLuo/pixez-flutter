@@ -14,15 +14,12 @@
  *
  */
 
-import 'package:bot_toast/bot_toast.dart';
 import 'package:fluent_ui/fluent_ui.dart' hide Image;
-import 'package:flutter/services.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:pixez/fluent/component/context_menu.dart';
 import 'package:pixez/fluent/component/pixiv_image.dart';
 import 'package:pixez/component/ugoira_painter.dart';
 import 'package:pixez/i18n.dart';
-import 'package:pixez/main.dart';
 import 'package:pixez/models/illust.dart';
 import 'package:pixez/page/picture/ugoira_store.dart';
 
@@ -46,17 +43,21 @@ class _UgoiraLoaderState extends State<UgoiraLoader> {
     super.initState();
   }
 
-  bool isEncoding = false;
-  static const platform = const MethodChannel('samples.flutter.dev/battery');
-
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, constraints) {
-      final width = constraints.maxWidth;
       return Observer(builder: (_) {
-        double height = widget.illusts.height.toDouble() /
-            widget.illusts.width.toDouble() *
-            width;
+        final illWidth = widget.illusts.width.toDouble();
+        final illHeight = widget.illusts.height.toDouble();
+        // 计算高度
+        var width = constraints.maxWidth;
+        var height = illHeight / illWidth * width;
+        if (height > constraints.maxHeight) {
+          // 高度超过限制 应改为计算宽度
+          height = constraints.maxHeight;
+          width = illWidth / illHeight * height;
+        }
+
         if (_store.status == UgoiraStatus.play) {
           return ContextMenu(
             child: UgoiraWidget(
@@ -69,39 +70,19 @@ class _UgoiraLoaderState extends State<UgoiraLoader> {
             items: [
               MenuFlyoutItem(
                 text: Text(I18n.of(context).encode_message),
-                onPressed: () {},
+                onPressed: null,
               ),
               MenuFlyoutSeparator(),
               MenuFlyoutItem(
                 text: Text(I18n.of(context).encode),
                 onPressed: () async {
-                  try {
-                    isEncoding = true;
-                    await platform.invokeMethod('getBatteryLevel', {
-                      "path": _store.drawPool.first.parent.path,
-                      "delay": _store.ugoiraMetadataResponse!.ugoiraMetadata
-                          .frames.first.delay,
-                      "delay_array": _store
-                          .ugoiraMetadataResponse!.ugoiraMetadata.frames
-                          .map((e) => e.delay)
-                          .toList(),
-                      "name": userSetting.singleFolder
-                          ? "${widget.illusts.user.name}_${widget.illusts.user.id}/${widget.id}"
-                          : "${widget.id}",
-                    });
-                    BotToast.showCustomText(
-                        toastBuilder: (_) => Text("encoding..."));
-                  } on PlatformException {
-                    isEncoding = false;
-                  }
-                  Navigator.of(context).pop();
+                  await _store.encodeGif(widget.illusts);
                 },
               ),
               MenuFlyoutItem(
                 text: Text(I18n.of(context).export),
                 onPressed: () async {
-                  await _store.export();
-                  Navigator.of(context).pop();
+                  await _store.export(widget.illusts);
                 },
               ),
             ],

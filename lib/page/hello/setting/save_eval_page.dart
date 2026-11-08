@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:bot_toast/bot_toast.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:pixez/i18n.dart';
 import 'package:pixez/main.dart';
@@ -51,6 +51,7 @@ class _SaveEvalPageState extends State<SaveEvalPage> {
       xRestrict: 0,
       metaPages: [],
       totalView: 100000,
+      totalComments: 1,
       totalBookmarks: 1000,
       isBookmarked: false,
       visible: true,
@@ -64,7 +65,7 @@ class _SaveEvalPageState extends State<SaveEvalPage> {
     _textEditingController = TextEditingController(
         text: widget.eval ?? userSetting.nameEval ?? default_func_str);
     super.initState();
-    _exampleJson = jsonEncode(_illusts.toJson());
+    _exampleJson = JsonEncoder.withIndent('  ').convert(_illusts.toJson());
   }
 
   final default_func_str = '''
@@ -120,7 +121,7 @@ function eval(illust, index, mime) {
             ),
             ListTile(
               title: Text("Example output file name:"),
-              subtitle: Text(_fileName ?? "undifined"),
+              subtitle: Text(_fileName ?? "undefined"),
             ),
             Container(
               height: 200,

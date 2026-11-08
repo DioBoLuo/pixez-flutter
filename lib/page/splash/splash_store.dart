@@ -17,17 +17,14 @@
 import 'package:mobx/mobx.dart';
 import 'package:pixez/component/pixiv_image.dart';
 import 'package:pixez/er/hoster.dart';
-import 'package:pixez/er/lprinter.dart';
 import 'package:pixez/main.dart';
 import 'package:pixez/models/onezero_response.dart';
-import 'package:pixez/network/onezero_client.dart';
 
 part 'splash_store.g.dart';
 
 class SplashStore = _SplashStoreBase with _$SplashStore;
 
 abstract class _SplashStoreBase with Store {
-  final OnezeroClient onezeroClient;
   final String OK_TEXT = '♪^∀^●)ノ';
   @observable
   String helloWord = "= w =";
@@ -35,7 +32,7 @@ abstract class _SplashStoreBase with Store {
   @observable
   OnezeroResponse? onezeroResponse;
 
-  _SplashStoreBase(this.onezeroClient);
+  _SplashStoreBase();
 
   @action
   hello() async {
@@ -45,8 +42,8 @@ abstract class _SplashStoreBase with Store {
     });
   }
 
-  maybeFetch() {
-    if (userSetting.disableBypassSni || helloWord == OK_TEXT) return;
+  maybeFetch() async {
+    if (!userSetting.needsCompatibleDnsFetch || helloWord == OK_TEXT) return;
     fetch();
   }
 
@@ -54,21 +51,14 @@ abstract class _SplashStoreBase with Store {
   fetch() async {
     if (helloWord == OK_TEXT ||
         host != ImageHost ||
-        userSetting.pictureSource != ImageHost) return;
+        !userSetting.needsCompatibleDnsFetch ||
+        userSetting.pictureSource != ImageHost)
+      return;
     try {
-      final value = await onezeroClient.queryDns(ImageHost);
-      value.answer.sort((l, r) => r.ttl.compareTo(l.ttl));
-      final host = value.answer.first.data;
-      LPrinter.d(host);
-      if (host.startsWith(Hoster.sPximgNet().split(".").first) &&
-          int.tryParse(host[0]) != null)
-        this.host = host;
-      else
-        throw 1;
-    } catch (e) {
-      this.host = Hoster.iPximgNet();
-      helloWord = OK_TEXT;
-    } finally {}
+      await Hoster.dnsQueryAll();
+    } catch (e) {}
+    this.host = Hoster.iPximgNet();
+    helloWord = OK_TEXT;
   }
 
   setHost(String value) {

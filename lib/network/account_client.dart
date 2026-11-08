@@ -19,14 +19,24 @@ import 'dart:core';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:dio/dio.dart';
-import 'package:dio/io.dart';
+import 'package:dio_compatibility_layer/dio_compatibility_layer.dart';
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
+import 'package:pixez/main.dart';
 import 'package:pixez/models/account.dart';
 import 'package:pixez/network/oauth_client.dart';
+import 'package:pixez/network/pixez_network_settings.dart';
+import 'package:rhttp/rhttp.dart' as r;
 
 class AccountClient {
-  late Dio httpClient;
+  Dio? _httpClient;
+
+  Dio get httpClient {
+    return _httpClient!;
+  }
+
   final String hashSalt =
       "28c1fdd170a5204386cb1313c7077b34f83e4aaf4aa829ce78c231e05b0bae2c";
   static const BASE_API_URL_HOST = 'accounts.pixiv.net';
@@ -43,63 +53,105 @@ class AccountClient {
     return digest.toString();
   }
 
-  Future<Response> createProvisionalAccount(String user_name) {
-    return httpClient.post("/api/provisional-accounts/create",
-        data: {
-          "user_name": user_name,
-          "ref": "pixiv_android_app_provisional_account"
+  Future<Response> createProvisionalAccount(String user_name) async {
+    await checkDio();
+    return httpClient.post(
+      "/api/provisional-accounts/create",
+      data: {
+        "user_name": user_name,
+        "ref": "pixiv_android_app_provisional_account",
+      },
+      options: Options(
+        contentType: Headers.formUrlEncodedContentType,
+        headers: {
+          "Authorization": "Bearer l-f9qZ0ZyqSwRyZs8-MymbtWBbSxmCu1pmbOlyisou8",
         },
-        options:
-            Options(contentType: Headers.formUrlEncodedContentType, headers: {
-          "Authorization": "Bearer l-f9qZ0ZyqSwRyZs8-MymbtWBbSxmCu1pmbOlyisou8"
-        }));
+      ),
+    );
   }
 
-  Future<Response> accountEdit(
-      {String? newMailAddress,
-      String? currentPassword,
-      newPassword,
-      newUserAccount}) async {
+  Future<Response> accountEdit({
+    String? newMailAddress,
+    String? currentPassword,
+    newPassword,
+    newUserAccount,
+  }) async {
     AccountProvider accountProvider = new AccountProvider();
     await accountProvider.open();
     final allAccount = await accountProvider.getAllAccount();
     AccountPersist accountPersist = allAccount[0];
     currentPassword = accountPersist.passWord;
-    return httpClient.post("/api/account/edit",
-        data: {
-          "new_mail_address": newMailAddress,
-          "new_user_account": newUserAccount,
-          "current_password": currentPassword,
-          "new_password": newPassword
-        }..removeWhere((f, n) => n == null),
-        options: Options(
-            contentType: Headers.formUrlEncodedContentType,
-            headers: {
-              OAuthClient.AUTHORIZATION: "Bearer " + accountPersist.accessToken
-            }));
+    await checkDio();
+    return httpClient.post(
+      "/api/account/edit",
+      data: {
+        "new_mail_address": newMailAddress,
+        "new_user_account": newUserAccount,
+        "current_password": currentPassword,
+        "new_password": newPassword,
+      }..removeWhere((f, n) => n == null),
+      options: Options(
+        contentType: Headers.formUrlEncodedContentType,
+        headers: {
+          OAuthClient.AUTHORIZATION: "Bearer " + accountPersist.accessToken,
+        },
+      ),
+    );
   }
 
-  AccountClient() {
-    String time = getIsoDate();
-    this.httpClient = Dio()
-      ..options.baseUrl = "https://210.140.131.219"
-      ..options.headers = {
-        "X-Client-Time": time,
-        "X-Client-Hash": getHash(time + hashSalt),
-        "User-Agent": "PixivAndroidApp/5.0.155 (Android 6.0; Pixel C)",
-        HttpHeaders.acceptLanguageHeader: "zh-CN",
-        "App-OS": "Android",
-        "App-OS-Version": "Android 6.0",
-        "App-Version": "5.0.166",
-        "Host": BASE_API_URL_HOST
-      }
-      ..options.connectTimeout = Duration(seconds: 5)
-      ..interceptors.add(LogInterceptor(requestBody: true, responseBody: true));
-    httpClient.httpClientAdapter = IOHttpClientAdapter()
-      ..onHttpClientCreate = (client) {
-        client.badCertificateCallback =
-            (X509Certificate cert, String host, int port) => true;
-        return client;
-      };
+  Future<void> checkDio() async {
+    if (_httpClient == null) {
+      await createDioClient();
+    }
   }
+
+  Future<Dio> createDioClient() async {
+    String time = getIsoDate();
+    final dio = Dio(
+      BaseOptions(
+        baseUrl: 'https://${BASE_API_URL_HOST}',
+        headers: {
+          "X-Client-Time": time,
+          "X-Client-Hash": getHash(time + hashSalt),
+          "User-Agent": "PixivAndroidApp/5.0.155 (Android 6.0; Pixel C)",
+          HttpHeaders.acceptLanguageHeader: "zh-CN",
+          "App-OS": "Android",
+          "App-OS-Version": "Android 6.0",
+          "App-Version": "5.0.166",
+          HttpHeaders.hostHeader: BASE_API_URL_HOST,
+        },
+        contentType: Headers.formUrlEncodedContentType,
+      ),
+    );
+    if (kDebugMode) {
+      dio.interceptors.add(
+        LogInterceptor(
+          responseBody: true,
+          responseHeader: true,
+          requestBody: true,
+        ),
+      );
+    }
+    final compatibleClient = await r.RhttpCompatibleClient.create(
+      settings: PixezNetworkSettings.forHost(
+        BASE_API_URL_HOST,
+        userSetting.oauthNetworkMode,
+      ),
+    );
+    dio.httpClientAdapter = ConversionLayerAdapter(compatibleClient);
+    _httpClient = dio;
+    if (Platform.isAndroid) {
+      try {
+        DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
+        AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
+        var headers = httpClient.options.headers;
+        headers['User-Agent'] =
+            "PixivAndroidApp/5.0.166 (Android ${androidInfo.version.release}; ${androidInfo.model})";
+        headers['App-OS-Version'] = "Android ${androidInfo.version.release}";
+      } catch (e) {}
+    }
+    return dio;
+  }
+
+  AccountClient() {}
 }

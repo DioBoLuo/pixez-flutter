@@ -20,6 +20,7 @@ import 'dart:io';
 import 'package:bot_toast/bot_toast.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
+import 'package:material_ui/material_ui.dart' show CircleAvatar;
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:in_app_purchase_storekit/store_kit_wrappers.dart';
@@ -326,7 +327,7 @@ class _AboutPageState extends State<AboutPage> {
           ListTile(
             leading: Icon(FluentIcons.favorite_star),
             title: Text(I18n.of(context).thanks),
-            subtitle: Text('感谢帮助我测试的弹幕委员会群友们\n感谢pixiv cat站主提供的图床'),
+            subtitle: Text('感谢帮助我测试的弹幕委员会群友们\n感谢 pixiv cat 站主提供的图床'),
             onPressed: () {
               Leader.push(
                 context,
@@ -342,12 +343,13 @@ class _AboutPageState extends State<AboutPage> {
             subtitle: Text(I18n.of(context).share_this_app_link),
             onPressed: () {
               if (Platform.isIOS) {
-                Share.share('https://apps.apple.com/cn/app/pixez/id1494435126');
+                SharePlus.instance.share(ShareParams(
+                    text: 'https://apps.apple.com/cn/app/pixez/id1494435126'));
               }
             },
           ),
           ListTile(
-            leading: Icon(FontAwesomeIcons.telegram),
+            leading: FaIcon(FontAwesomeIcons.telegram),
             title: Text("Group"),
             subtitle: Text('t.me/PixEzChannel'),
           ),
@@ -428,7 +430,7 @@ class _AboutPageState extends State<AboutPage> {
               Card(
                 margin: EdgeInsets.all(8.0),
                 child: ListTile(
-                  leading: Icon(FontAwesomeIcons.mugSaucer),
+                  leading: FaIcon(FontAwesomeIcons.mugSaucer),
                   title: Text(i.description),
                   subtitle: Text(i.price),
                   onPressed: () {

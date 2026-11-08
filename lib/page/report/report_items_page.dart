@@ -1,5 +1,5 @@
 import 'package:bot_toast/bot_toast.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:pixez/i18n.dart';
 
 class ReportItemsPage extends StatefulWidget {
@@ -43,7 +43,7 @@ class _ReportItemsPageState extends State<ReportItemsPage> {
                 final title = items[index];
                 return Container(
                   color: index == _selectItem
-                      ? Theme.of(context).primaryColor.withOpacity(0.5)
+                      ? Theme.of(context).primaryColor.withValues(alpha: 0.5)
                       : Colors.transparent,
                   child: ListTile(
                     title: Text(title),
@@ -70,9 +70,9 @@ class _ReportItemsPageState extends State<ReportItemsPage> {
                   await widget.onSubmit();
                   BotToast.closeAllLoading();
                   Navigator.of(context).pop();
-                  BotToast.showText(text: "Thanks for your feedback");
+                  BotToast.showText(text: I18n.ofContext().thanks_for_your_feedback);
                 },
-                child: Text("Submit"),
+                child: Text(I18n.ofContext().submit),
               ),
             ),
           )

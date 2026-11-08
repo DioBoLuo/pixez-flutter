@@ -13,28 +13,19 @@
  *  this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import 'package:intl/intl.dart';
-import 'package:pixez/component/pixiv_image.dart';
+import 'package:pixez/er/pixiv_image_source.dart';
 import 'package:pixez/main.dart';
+import 'package:pixez/models/ban_tag.dart';
 import 'package:pixez/models/illust.dart';
 import 'package:pixez/models/novel_recom_response.dart';
 
 extension HostExts on Uri {
   Uri toTureUri() {
-    if (userSetting.disableBypassSni) {
-      return this;
-    } else {
-      if (userSetting.pictureSource != ImageHost) {
-        try {
-          return this.replace(host: userSetting.pictureSource);
-        } catch (e) {}
-      }
-      if (this.host == ImageHost) {
-        return this.replace(host: splashStore.host);
-      } else if (this.host == ImageSHost) {
-        return this.replace(host: splashStore.host);
-      }
-    }
-    return this;
+    return PixivImageSource.resolveUri(
+      this,
+      networkMode: userSetting.networkMode,
+      pictureSource: userSetting.pictureSource,
+    );
   }
 }
 
@@ -58,27 +49,6 @@ extension TimeExts on String {
         .replaceAll("</p>", "");
   }
 
-  String toTrueUrl() {
-    if (userSetting.disableBypassSni || this.contains("novel")) {
-      return this;
-    } else {
-      if (userSetting.pictureSource != ImageHost) {
-        try {
-          return Uri.parse(this)
-              .replace(host: userSetting.pictureSource)
-              .toString();
-        } catch (e) {}
-      }
-      if (this.contains(ImageHost)) {
-        return this.replaceFirst(ImageHost, splashStore.host);
-      }
-      if (this.contains(ImageSHost)) {
-        return this.replaceFirst(ImageSHost, splashStore.host);
-      }
-    }
-    return this;
-  }
-
   String toLegal() {
     return this
         .replaceAll("/", "")
@@ -88,7 +58,9 @@ extension TimeExts on String {
         .replaceAll("?", "")
         .replaceAll(">", "")
         .replaceAll("|", "")
-        .replaceAll("<", "");
+        .replaceAll("<", "")
+        .replaceAll('"', "")
+        .replaceAll(RegExp(r'[\x00-\x1F\x7F]'), "");
   }
 }
 
@@ -96,7 +68,13 @@ extension NovelExts on Novel {
   bool hateByUser() {
     for (var t in muteStore.banTags) {
       for (var f in this.tags) {
-        if (f.name == t.name) return true;
+        if (t.isRegexMatch(f.name)) {
+          return true;
+        }
+      }
+      final allText = tags.map((e) => '#${e.name}').join('');
+      if (t.isRegexMatch(allText)) {
+        return true;
       }
     }
     for (var j in muteStore.banUserIds) {
@@ -113,8 +91,12 @@ extension NovelExts on Novel {
 }
 
 extension IllustExts on Illusts {
+  String get commentCountText =>
+      totalComments == null ? '' : '($totalComments)';
   bool hIsNotAllow() {
     if (userSetting.hIsNotAllow) {
+      // x_restrict: 1 = R-18, 2 = R-18G
+      if (xRestrict > 0) return true;
       if (tags.any((tag) => tag.name.startsWith('R-18'))) {
         return true;
       }
@@ -123,22 +105,25 @@ extension IllustExts on Illusts {
   }
 
   bool hateByUser({bool ai = false, bool includeR18Setting = false}) {
-    if (ai) {
-      return false;
-    }
     if (includeR18Setting) {
       if (userSetting.hIsNotAllow) {
-        for (int i = 0; i < tags.length; i++) {
-          if (tags[i].name.startsWith('R-18')) return true;
+        for (final tag in tags) {
+          if (tag.name.startsWith('R-18')) return true;
         }
       }
     }
-    if (muteStore.banAIIllust && illustAIType == 2) {
+    if (muteStore.banAIIllust && illustAIType == 2 && !ai) {
       return true;
     }
     for (var t in muteStore.banTags) {
       for (var f in this.tags) {
-        if (f.name == t.name) return true;
+        if (t.isRegexMatch(f.name)) {
+          return true;
+        }
+      }
+      final allText = tags.map((e) => '#${e.name}').join('');
+      if (t.isRegexMatch(allText)) {
+        return true;
       }
     }
     for (var j in muteStore.banUserIds) {
@@ -150,9 +135,9 @@ extension IllustExts on Illusts {
       if (this.id == int.parse(i.illustId)) {
         return true;
       }
-    if (accountStore.now?.mailAddress
-            .toLowerCase()
-            .contains("pxezfeedback@outlook.com") ==
+    if (accountStore.now?.mailAddress.toLowerCase().contains(
+          "pxezfeedback@outlook.com",
+        ) ==
         true) {
       if (sanityLevel > 4) return true;
     }

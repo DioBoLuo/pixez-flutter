@@ -18,6 +18,7 @@ import 'dart:async';
 
 import 'package:bot_toast/bot_toast.dart';
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:material_ui/material_ui.dart' show DateTimeRange;
 import 'package:pixez/i18n.dart';
 import 'package:pixez/fluent/lighting/fluent_lighting_page.dart';
 import 'package:pixez/lighting/lighting_store.dart';
@@ -71,9 +72,16 @@ class _ResultIllustListState extends State<ResultIllustList> {
     20000,
     30000,
     50000,
+    100000,
   ];
 
-  final sort = ["date_desc", "date_asc", "popular_desc"];
+  final sort = [
+    "date_desc",
+    "date_asc",
+    "popular_desc",
+    "popular_male_desc",
+    "popular_female_desc"
+  ];
   static List<String> search_target = [
     "partial_match_for_tags",
     "exact_match_for_tags",
@@ -139,7 +147,8 @@ class _ResultIllustListState extends State<ResultIllustList> {
               search_target: searchTarget,
               sort: selectSort,
               start_date: _dateTimeRange?.start,
-              end_date: _dateTimeRange?.end));
+              end_date: _dateTimeRange?.end,
+              bookmark_num: null));
     else
       futureGet = ApiForceSource(
           futureGet: (bool e) => apiClient.getSearchIllust(
@@ -147,7 +156,8 @@ class _ResultIllustListState extends State<ResultIllustList> {
               search_target: searchTarget,
               sort: selectSort,
               start_date: _dateTimeRange?.start,
-              end_date: _dateTimeRange?.end));
+              end_date: _dateTimeRange?.end,
+              bookmark_num: null));
   }
 
   void _buildShowBottomSheet(BuildContext context) {
@@ -211,6 +221,14 @@ class _ResultIllustListState extends State<ResultIllustList> {
                             ComboBoxItem(
                               child: Text(I18n.of(context).popular_desc),
                               value: 2,
+                            ),
+                            ComboBoxItem(
+                              child: Text(I18n.of(context).popular_male_desc),
+                              value: 3,
+                            ),
+                            ComboBoxItem(
+                              child: Text(I18n.of(context).popular_female_desc),
+                              value: 4,
                             ),
                           ],
                           onChanged: (int? index) {

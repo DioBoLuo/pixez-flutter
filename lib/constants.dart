@@ -17,12 +17,15 @@
 import 'dart:io';
 
 class Constants {
-  static String tagName = "0.9.36";
-  static const isGooglePlay =
-      bool.fromEnvironment("IS_GOOGLEPLAY", defaultValue: false);
+  static const String no_h = 'assets/images/h_long.jpg';
+  static String tagName = "0.9.113";
+  static const isGooglePlay = bool.fromEnvironment(
+    "IS_GOOGLEPLAY",
+    defaultValue: false,
+  );
   static int type = 0;
   static String? code_verifier = null;
 
   /// 为true表示使用FluentUI 否则为false,不应作为Desktop的判断
-  static final bool isFluent = Platform.isWindows;
+  static final bool isFluent = Platform.isWindows || Platform.isLinux;
 }

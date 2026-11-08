@@ -14,14 +14,20 @@
  *
  */
 
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
+import 'package:html/parser.dart';
 import 'package:dio/dio.dart';
 import 'package:mobx/mobx.dart';
 import 'package:pixez/er/lprinter.dart';
 import 'package:pixez/main.dart';
 import 'package:pixez/models/novel_recom_response.dart';
-import 'package:pixez/models/novel_text_response.dart';
 import 'package:pixez/models/novel_viewer_persist.dart';
+import 'package:pixez/models/novel_web_response.dart';
 import 'package:pixez/network/api_client.dart';
+import 'package:pixez/page/novel/viewer/image_text.dart';
+import 'package:flutter/widgets.dart';
 
 part 'novel_store.g.dart';
 
@@ -35,7 +41,7 @@ abstract class _NovelStoreBase with Store {
   @observable
   Novel? novel;
   @observable
-  NovelTextResponse? novelTextResponse;
+  NovelWebResponse? novelTextResponse;
   @observable
   String? errorMessage;
   @observable
@@ -43,6 +49,8 @@ abstract class _NovelStoreBase with Store {
 
   @observable
   double bookedOffset = 0.0;
+  @observable
+  List<NovelSpansData> spans = [];
 
   NovelViewerPersistProvider _novelViewerPersistProvider =
       NovelViewerPersistProvider();
@@ -51,8 +59,9 @@ abstract class _NovelStoreBase with Store {
   bookPosition(double offset) async {
     LPrinter.d("bookPosition $offset");
     await _novelViewerPersistProvider.open();
-    await _novelViewerPersistProvider
-        .insert(NovelViewerPersist(novelId: id, offset: offset));
+    await _novelViewerPersistProvider.insert(
+      NovelViewerPersist(novelId: id, offset: offset),
+    );
     positionBooked = true;
   }
 
@@ -65,12 +74,17 @@ abstract class _NovelStoreBase with Store {
   }
 
   @action
-  fetch() async {
+  Future<void> fetch() async {
     errorMessage = null;
     try {
       bookedOffset = 0.0;
-      final response = await apiClient.getNovelText(id);
-      novelTextResponse = NovelTextResponse.fromJson(response.data);
+      final response = await apiClient.webviewNovel(id);
+      final json = parseNovelJsonFromHtml(response.data);
+      if (json == null) {
+        throw FormatException('Unable to parse novel data from Pixiv HTML');
+      }
+      novelTextResponse = NovelWebResponse.fromJson(jsonDecode(json));
+      spans = await compute(buildSpans, novelTextResponse!);
       if (novel == null) {
         Response response = await apiClient.getNovelDetail(id);
         novel = Novel.fromJson(response.data['novel']);
@@ -95,4 +109,67 @@ abstract class _NovelStoreBase with Store {
       }
     } catch (e) {}
   }
+}
+
+class ComputeSpan {
+  final BuildContext context;
+  final NovelWebResponse webResponse;
+
+  ComputeSpan(this.context, this.webResponse);
+}
+
+Future<List<NovelSpansData>> buildSpans(NovelWebResponse webResponse) {
+  return Future.delayed(Duration(milliseconds: 100), () {
+    NovelSpansGenerator novelSpansGenerator = NovelSpansGenerator();
+    return novelSpansGenerator.buildSpans(webResponse);
+  });
+}
+
+String? parseNovelJsonFromHtml(String html) {
+  final document = parse(html);
+  for (final scriptElement in document.querySelectorAll('script')) {
+    final scriptContent = scriptElement.innerHtml;
+    final novelIndex = scriptContent.indexOf('novel:');
+    if (novelIndex == -1) {
+      continue;
+    }
+    final objectStart = scriptContent.indexOf('{', novelIndex);
+    if (objectStart == -1) {
+      continue;
+    }
+    return _readBalancedJsonObject(scriptContent, objectStart);
+  }
+  return null;
+}
+
+String? _readBalancedJsonObject(String source, int start) {
+  var depth = 0;
+  var inString = false;
+  var escaped = false;
+
+  for (var i = start; i < source.length; i++) {
+    final char = source[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char == '\\') {
+        escaped = true;
+      } else if (char == '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char == '"') {
+      inString = true;
+    } else if (char == '{') {
+      depth++;
+    } else if (char == '}') {
+      depth--;
+      if (depth == 0) {
+        return source.substring(start, i + 1);
+      }
+    }
+  }
+  return null;
 }

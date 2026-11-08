@@ -14,14 +14,20 @@
  *
  */
 
+import 'dart:io';
+
+import 'package:bot_toast/bot_toast.dart';
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:pixez/custom_tab_plugin.dart';
+import 'package:pixez/er/fluent_leader.dart';
 import 'package:pixez/er/leader.dart';
 import 'package:pixez/fluent/page/login/token_page.dart';
+import 'package:pixez/fluent/page/webview/webview_page.dart';
 import 'package:pixez/i18n.dart';
+import 'package:pixez/main.dart';
 import 'package:pixez/network/oauth_client.dart';
 import 'package:pixez/fluent/page/about/about_page.dart';
 import 'package:pixez/fluent/page/hello/setting/setting_quality_page.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class LoginPage extends StatefulWidget {
   @override
@@ -47,116 +53,153 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return ScaffoldPage(
-        bottomBar: CommandBar(
-          primaryItems: [
-            CommandBarButton(
+      footer: CommandBar(
+        primaryItems: [
+          CommandBarButton(
+            icon: Icon(FluentIcons.settings),
+            onPressed: () {
+              Leader.push(
+                context,
+                SettingQualityPage(),
                 icon: Icon(FluentIcons.settings),
-                onPressed: () {
-                  Leader.push(
-                    context,
-                    SettingQualityPage(),
-                    icon: Icon(FluentIcons.settings),
-                    title: Text(I18n.of(context).quality_setting),
-                  );
-                }),
-            CommandBarButton(
+                title: Text(I18n.of(context).quality_setting),
+              );
+            },
+          ),
+          CommandBarButton(
+            icon: Icon(FluentIcons.message),
+            onPressed: () {
+              Leader.push(
+                context,
+                AboutPage(),
                 icon: Icon(FluentIcons.message),
-                onPressed: () {
-                  Leader.push(
-                    context,
-                    AboutPage(),
-                    icon: Icon(FluentIcons.message),
-                    title: Text(I18n.of(context).about),
-                  );
-                })
-          ],
-        ),
-        content: Builder(builder: (context) {
+                title: Text(I18n.of(context).about),
+              );
+            },
+          ),
+        ],
+      ),
+      content: Builder(
+        builder: (context) {
           return _buildBody(context);
-        }));
+        },
+      ),
+    );
   }
 
   Widget _buildBody(BuildContext context) {
     return FluentTheme(
       data: FluentThemeData(
-          accentColor: FluentTheme.of(context).accentColor,
-          brightness: FluentTheme.of(context).brightness),
+        accentColor: FluentTheme.of(context).accentColor,
+        brightness: FluentTheme.of(context).brightness,
+      ),
       child: Padding(
         padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
         child: SingleChildScrollView(
-            padding: EdgeInsets.all(0),
-            child: Column(
-              children: <Widget>[
-                Container(
-                  height: 20,
-                ),
-                Image.asset(
-                  'assets/images/icon.png',
-                  height: 80,
-                  width: 80,
-                ),
-                Padding(
-                  padding: EdgeInsets.only(bottom: 20),
-                  child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 20),
-                    child: AutofillGroup(
-                      child: Column(
-                        children: <Widget>[
-                          Padding(
-                            padding: EdgeInsets.all(10),
-                          ),
-                          FilledButton(
-                              child: Text(
-                                I18n.of(context).login,
-                              ),
-                              onPressed: () async {
-                                try {
-                                  String url =
-                                      await OAuthClient.generateWebviewUrl();
-                                  await launchUrl(Uri.parse(url));
-                                } catch (e) {}
-                              }),
-                          FilledButton(
-                            onPressed: () async {
-                              try {
-                                String url =
-                                    await OAuthClient.generateWebviewUrl(
-                                        create: true);
-                                await launchUrl(Uri.parse(url));
-                              } catch (e) {}
-                            },
-                            child: Text(I18n.of(context).dont_have_account),
-                          ),
-                          Button(
-                            onPressed: () => showDialog(
+          padding: EdgeInsets.all(0),
+          child: Column(
+            children: <Widget>[
+              Container(height: 20),
+              Image.asset('assets/images/icon.png', height: 80, width: 80),
+              Padding(
+                padding: EdgeInsets.only(bottom: 20),
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 20),
+                  child: AutofillGroup(
+                    child: Column(
+                      children: <Widget>[
+                        SizedBox(height: 10),
+                        FilledButton(
+                          child: Text(I18n.of(context).login),
+                          onPressed: () async {
+                            try {
+                              String url =
+                                  await OAuthClient.generateWebviewUrl();
+                              _launch(url);
+                            } catch (e) {}
+                          },
+                        ),
+                        SizedBox(height: 4),
+                        FilledButton(
+                          onPressed: () async {
+                            try {
+                              String url = await OAuthClient.generateWebviewUrl(
+                                create: true,
+                              );
+                              _launch(url);
+                            } catch (e) {}
+                          },
+                          child: Text(I18n.of(context).dont_have_account),
+                        ),
+                        SizedBox(height: 4),
+                        OutlinedButton(
+                          onPressed: () async {
+                            await showDialog(
                               context: context,
                               builder: (context) => TokenPage(),
-                              useRootNavigator: false,
-                            ),
-                            child: Text('Token'),
-                          ),
-                          HyperlinkButton(
-                            child: Text(
-                              I18n.of(context).terms,
-                            ),
-                            onPressed: () async {
-                              final url =
-                                  'https://www.pixiv.net/terms/?page=term';
-                              try {
-                                await launchUrl(Uri.parse(url));
-                              } catch (e) {}
-                            },
-                          ),
-                        ],
-                        mainAxisAlignment: MainAxisAlignment.start,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                      ),
+                            );
+                          },
+                          child: Text("Token"),
+                        ),
+                        SizedBox(height: 4),
+                        HyperlinkButton(
+                          child: Text(I18n.of(context).terms),
+                          onPressed: () async {
+                            final url =
+                                'https://www.pixiv.net/terms/?page=term';
+                            try {
+                              await _launch(url);
+                            } catch (e) {}
+                          },
+                        ),
+                      ],
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                     ),
                   ),
                 ),
-              ],
-            )),
+              ),
+            ],
+          ),
+        ),
       ),
     );
+  }
+
+  _launch(url) async {
+    if (Platform.isLinux) {
+      final result = await FluentLeader.push(
+        context,
+        WebViewPage(url: url, returnRedirectUrl: true),
+        icon: const Icon(FluentIcons.signin),
+        title: Text(I18n.of(context).login),
+        forceSkipWrap: true,
+      );
+      final resultUri = result is String ? result : null;
+      if (resultUri != null && resultUri.isNotEmpty && mounted) {
+        final parsedUri = Uri.tryParse(resultUri);
+        if (parsedUri != null) {
+          await Leader.pushWithUri(context, parsedUri);
+        }
+      }
+      return;
+    }
+    if (userSetting.oauthNetworkMode.usesCompatibleConnection) {
+      // await WeissServer.listener();
+      // await WeissPlugin.start();
+      // await WeissPlugin.proxy();
+      Leader.push(
+        context,
+        WebViewPage(url: url),
+        icon: Icon(FluentIcons.signin),
+        title: Text(I18n.of(context).login),
+      );
+    } else {
+      try {
+        CustomTabPlugin.launch(url);
+      } catch (e) {
+        BotToast.showText(text: e.toString());
+      }
+    }
   }
 }

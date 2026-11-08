@@ -17,8 +17,8 @@
 import 'dart:async';
 
 import 'package:bot_toast/bot_toast.dart';
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:pixez/er/prefer.dart';
 import 'package:pixez/i18n.dart';
 import 'package:pixez/lighting/lighting_page.dart';
 import 'package:pixez/lighting/lighting_store.dart';
@@ -26,6 +26,22 @@ import 'package:pixez/main.dart';
 import 'package:pixez/network/api_client.dart';
 import 'package:pixez/page/search/result_illust_store.dart';
 import 'package:pixez/page/search/suggest/search_suggestion_page.dart';
+
+enum UgoiraFilter {
+  all,
+  onlyUgoira,
+  noUgoira,
+}
+
+enum SearchDatePreset {
+  none,
+  day1,
+  week1,
+  month1,
+  month6,
+  year1,
+  custom,
+}
 
 class ResultIllustList extends StatefulWidget {
   final String word;
@@ -41,26 +57,23 @@ class _ResultIllustListState extends State<ResultIllustList> {
   late ApiForceSource futureGet;
   late ScrollController _scrollController;
   late StreamSubscription<String> listen;
-
-  @override
-  void initState() {
-    _scrollController = ScrollController();
-    futureGet = ApiForceSource(
-        futureGet: (e) => apiClient.getSearchIllust(widget.word));
-    super.initState();
-    listen = topStore.topStream.listen((event) {
-      if (event == "401") {
-        _scrollController.position.jumpTo(0);
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    listen.cancel();
-    super.dispose();
-  }
-
+  final sort = [
+    "date_desc",
+    "date_asc",
+    "popular_desc",
+    "popular_male_desc",
+    "popular_female_desc"
+  ];
+  static List<String> search_target = [
+    "partial_match_for_tags",
+    "exact_match_for_tags",
+    "title_and_caption"
+  ];
+  String searchTarget = search_target[0];
+  String selectSort = "date_desc";
+  int searchAIType = 0;
+  UgoiraFilter ugoiraFilter = UgoiraFilter.all;
+  int selectStarNum = 0;
   List<int> starNum = [
     0,
     100,
@@ -73,18 +86,82 @@ class _ResultIllustListState extends State<ResultIllustList> {
     20000,
     30000,
     50000,
+    100000,
   ];
+  List<List<int>> premiumStarNum = [
+    [],
+    [10000],
+    [50000, 99999],
+    [10000, 49999],
+    [5000, 9999],
+    [1000, 4999],
+    [500, 999],
+    [300, 499],
+    [100, 299],
+    [50, 99],
+    [30, 49],
+    [10, 29],
+  ];
+  List<int> _bookmarkNumList = [];
+  bool recordRememberCurrentSelection = false;
+  bool inited = false;
 
-  final sort = ["date_desc", "date_asc", "popular_desc"];
-  static List<String> search_target = [
-    "partial_match_for_tags",
-    "exact_match_for_tags",
-    "title_and_caption"
-  ];
-  String searchTarget = search_target[0];
-  String selectSort = "date_desc";
-  int selectStarNum = 0;
-  // double starValue = 0.0;
+  @override
+  void initState() {
+    _scrollController = ScrollController();
+    checkInit();
+    super.initState();
+    listen = topStore.topStream.listen((event) {
+      if (event == "401") {
+        _scrollController.position.jumpTo(0);
+      }
+    });
+  }
+
+  checkInit() async {
+    final prefix = 'illust_search_result_';
+    final searchAIKey = '${prefix}_search_ai_type';
+    final searchTargetKey = '${prefix}_search_target';
+    final searchSortKey = '${prefix}_search_sort';
+    final ugoiraFilterKey = '${prefix}_ugoira_filter';
+    final recordRememberCurrentSelectionKey =
+        'illust_search_result_record_remember_current_selection';
+    recordRememberCurrentSelection =
+        Prefer.getBool(recordRememberCurrentSelectionKey) ?? false;
+    if (recordRememberCurrentSelection) {
+      if (mounted) {
+        setState(() {
+          searchTarget = Prefer.getString(searchTargetKey) ?? search_target[0];
+          selectSort = Prefer.getString(searchSortKey) ?? "date_desc";
+          searchAIType = Prefer.getInt(searchAIKey) ?? 0;
+          ugoiraFilter = UgoiraFilter
+              .values[Prefer.getInt(ugoiraFilterKey) ?? UgoiraFilter.all.index];
+        });
+      }
+    }
+    setState(() {
+      _changeQueryParams();
+      inited = true;
+    });
+  }
+
+  record() async {
+    final prefix = 'illust_search_result_';
+    final searchAIKey = '${prefix}_search_ai_type';
+    final searchTargetKey = '${prefix}_search_target';
+    final searchSortKey = '${prefix}_search_sort';
+    final ugoiraFilterKey = '${prefix}_ugoira_filter';
+    await Prefer.setString(searchTargetKey, searchTarget);
+    await Prefer.setString(searchSortKey, selectSort);
+    await Prefer.setInt(searchAIKey, searchAIType);
+    await Prefer.setInt(ugoiraFilterKey, ugoiraFilter.index);
+  }
+
+  @override
+  void dispose() {
+    listen.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -92,17 +169,15 @@ class _ResultIllustListState extends State<ResultIllustList> {
       child: Column(
         children: <Widget>[
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: <Widget>[
-              InkWell(
-                onTap: () {
-                  Navigator.of(context).push(MaterialPageRoute(
-                      builder: (context) => SearchSuggestionPage(
-                            preword: widget.word,
-                          )));
-                },
-                child: Container(
-                  width: MediaQuery.of(context).size.width * 2 / 3,
+              Expanded(
+                child: InkWell(
+                  onTap: () {
+                    Navigator.of(context).push(MaterialPageRoute(
+                        builder: (context) => SearchSuggestionPage(
+                              preword: widget.word,
+                            )));
+                  },
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: Padding(
@@ -117,32 +192,122 @@ class _ResultIllustListState extends State<ResultIllustList> {
               ),
               Align(
                 alignment: Alignment.centerRight,
-                child: Row(
-                  children: [
-                    IconButton(
-                        icon: Icon(Icons.date_range),
-                        onPressed: () {
-                          _buildShowDateRange(context);
-                        }),
-                    _buildStar(),
-                    IconButton(
-                        icon: Icon(Icons.filter_alt_outlined),
-                        onPressed: () {
-                          _buildShowBottomSheet(context);
-                          // _showMaterialBottom();
-                        }),
-                  ],
+                child: Padding(
+                  padding:
+                      const EdgeInsets.only(top: 8.0, bottom: 8.0, right: 8.0),
+                  child: Row(
+                    children: [
+                      _buildDateRangeButton(),
+                      if (accountStore.now?.isPremium == 1)
+                        Padding(
+                          padding: const EdgeInsets.all(4.0),
+                          child: _buildPremiumStar(),
+                        ),
+                      Padding(
+                        padding: const EdgeInsets.all(4.0),
+                        child: _buildStar(),
+                      ),
+                      InkWell(
+                          child: Padding(
+                            padding: const EdgeInsets.all(4.0),
+                            child: Icon(Icons.filter_alt_outlined),
+                          ),
+                          onTap: () {
+                            _buildShowBottomSheet(context);
+                          }),
+                    ],
+                  ),
                 ),
               )
             ],
           ),
           Expanded(
-              child: LightingList(
-            source: futureGet,
-            scrollController: _scrollController,
-          ))
+              child: !inited
+                  ? Container()
+                  : LightingList(
+                      source: futureGet,
+                      scrollController: _scrollController,
+                      filter: (illust) {
+                        return switch (ugoiraFilter) {
+                          UgoiraFilter.all => true,
+                          UgoiraFilter.onlyUgoira => illust.type == 'ugoira',
+                          UgoiraFilter.noUgoira => illust.type != 'ugoira',
+                        };
+                      },
+                    ))
         ],
       ),
+    );
+  }
+
+  String _getDatePresetLabel(BuildContext context, SearchDatePreset preset) {
+    return switch (preset) {
+      SearchDatePreset.none => I18n.of(context).date_preset_none,
+      SearchDatePreset.day1 => I18n.of(context).date_preset_1day,
+      SearchDatePreset.week1 => I18n.of(context).date_preset_1week,
+      SearchDatePreset.month1 => I18n.of(context).date_preset_1month,
+      SearchDatePreset.month6 => I18n.of(context).date_preset_6months,
+      SearchDatePreset.year1 => I18n.of(context).date_preset_1year,
+      SearchDatePreset.custom => I18n.of(context).date_preset_custom,
+    };
+  }
+
+  Widget _buildDateRangeButton() {
+    return PopupMenuButton<SearchDatePreset>(
+      child: Padding(
+        padding: const EdgeInsets.all(4.0),
+        child: Icon(
+          Icons.date_range,
+          color: _dateTimeRange != null
+              ? Theme.of(context).colorScheme.primary
+              : null,
+        ),
+      ),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(Radius.circular(16.0)),
+      ),
+      onSelected: (preset) {
+        if (preset == SearchDatePreset.custom) {
+          _buildShowDateRange(context);
+          return;
+        }
+        final now = DateTime.now();
+        setState(() {
+          _dateTimeRange = switch (preset) {
+            SearchDatePreset.none => null,
+            SearchDatePreset.day1 => DateTimeRange(
+                start: now.subtract(const Duration(days: 1)),
+                end: now,
+              ),
+            SearchDatePreset.week1 => DateTimeRange(
+                start: now.subtract(const Duration(days: 7)),
+                end: now,
+              ),
+            SearchDatePreset.month1 => DateTimeRange(
+                start: now.subtract(const Duration(days: 30)),
+                end: now,
+              ),
+            SearchDatePreset.month6 => DateTimeRange(
+                start: now.subtract(const Duration(days: 180)),
+                end: now,
+              ),
+            SearchDatePreset.year1 => DateTimeRange(
+                start: now.subtract(const Duration(days: 365)),
+                end: now,
+              ),
+            SearchDatePreset.custom => _dateTimeRange,
+          };
+        });
+        _changeQueryParams();
+      },
+      itemBuilder: (context) {
+        return SearchDatePreset.values.map((preset) {
+          return PopupMenuItem<SearchDatePreset>(
+            value: preset,
+            child: Text(_getDatePresetLabel(context, preset)),
+          );
+        }).toList();
+      },
     );
   }
 
@@ -169,7 +334,9 @@ class _ResultIllustListState extends State<ResultIllustList> {
               search_target: searchTarget,
               sort: selectSort,
               start_date: _dateTimeRange?.start,
-              end_date: _dateTimeRange?.end));
+              end_date: _dateTimeRange?.end,
+              bookmark_num: _bookmarkNumList,
+              search_ai_type: searchAIType));
     else
       futureGet = ApiForceSource(
           futureGet: (bool e) => apiClient.getSearchIllust(
@@ -177,108 +344,104 @@ class _ResultIllustListState extends State<ResultIllustList> {
               search_target: searchTarget,
               sort: selectSort,
               start_date: _dateTimeRange?.start,
-              end_date: _dateTimeRange?.end));
+              end_date: _dateTimeRange?.end,
+              bookmark_num: _bookmarkNumList,
+              search_ai_type: searchAIType));
   }
 
   void _buildShowBottomSheet(BuildContext context) {
+    var resultIllustSortWidget = ResultIllustSortWidget(
+        searchAIType: searchAIType,
+        selectSort: selectSort,
+        searchTarget: searchTarget,
+        ugoiraFilter: ugoiraFilter,
+        onPremium: () {
+          setState(() {
+            futureGet = ApiForceSource(
+                futureGet: (bool e) =>
+                    apiClient.getPopularPreview(widget.word));
+          });
+        },
+        onApply: () {
+          setState(() {
+            _changeQueryParams();
+          });
+        },
+        onSateChange: (
+            {required bool recordRememberCurrentSelection,
+            required int searchAIType,
+            required String searchTarget,
+            required String selectSort,
+            required UgoiraFilter ugoiraFilter}) {
+          setState(() {
+            this.searchAIType = searchAIType;
+            this.searchTarget = searchTarget;
+            this.selectSort = selectSort;
+            this.ugoiraFilter = ugoiraFilter;
+            this.recordRememberCurrentSelection =
+                recordRememberCurrentSelection;
+          });
+          if (recordRememberCurrentSelection) {
+            record();
+          }
+        });
+    // showDialog(context: context, builder: (context) => resultIllustSortWidget);
     showModalBottomSheet(
         context: context,
+        isScrollControlled: true,
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.vertical(top: Radius.circular(8.0))),
         builder: (context) {
-          return StatefulBuilder(builder: (_, setS) {
-            return SafeArea(
-              child: Container(
-                  width: MediaQuery.of(context).size.width,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: <Widget>[
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: <Widget>[
-                          TextButton(
-                              onPressed: () {},
-                              child: Text(I18n.of(context).filter,
-                                  style: TextStyle(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .secondary))),
-                          TextButton(
-                              onPressed: () {
-                                setState(() {
-                                  _changeQueryParams();
-                                });
-                                Navigator.of(context).pop();
-                              },
-                              child: Text(I18n.of(context).apply,
-                                  style: TextStyle(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .secondary))),
-                        ],
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: CupertinoSlidingSegmentedControl(
-                            groupValue: search_target.indexOf(searchTarget),
-                            children: <int, Widget>{
-                              0: Text(I18n.of(context).partial_match_for_tag),
-                              1: Text(I18n.of(context).exact_match_for_tag),
-                              2: Text(I18n.of(context).title_and_caption),
-                            },
-                            onValueChanged: (int? index) {
-                              setS(() {
-                                searchTarget = search_target[index!];
-                              });
-                            },
-                          ),
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: CupertinoSlidingSegmentedControl(
-                            groupValue: sort.indexOf(selectSort),
-                            children: <int, Widget>{
-                              0: Text(I18n.of(context).date_desc),
-                              1: Text(I18n.of(context).date_asc),
-                              2: Text(I18n.of(context).popular_desc),
-                            },
-                            onValueChanged: (int? index) {
-                              if (accountStore.now != null && index == 2) {
-                                if (accountStore.now!.isPremium == 0) {
-                                  BotToast.showText(text: 'not premium');
-                                  setState(() {
-                                    futureGet = ApiForceSource(
-                                        futureGet: (bool e) => apiClient
-                                            .getPopularPreview(widget.word));
-                                  });
-                                  Navigator.of(context).pop();
-                                  return;
-                                }
-                              }
-                              setS(() {
-                                selectSort = sort[index!];
-                              });
-                            },
-                          ),
-                        ),
-                      ),
-                      Container(
-                        height: 16,
-                      )
-                    ],
-                  )),
-            );
-          });
+          return resultIllustSortWidget;
         });
   }
 
   int _starValue = 0;
+
+  Widget _buildPremiumStar() {
+    return PopupMenuButton<List<int>>(
+      initialValue: _bookmarkNumList,
+      child: Icon(
+        Icons.format_list_numbered,
+      ),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(16.0))),
+      itemBuilder: (context) {
+        return premiumStarNum.map((List<int> value) {
+          if (value.isEmpty) {
+            return PopupMenuItem(
+              value: value,
+              child: Text(I18n.of(context).default_title),
+              onTap: () {
+                setState(() {
+                  _bookmarkNumList = value;
+                  _changeQueryParams();
+                });
+              },
+            );
+          } else {
+            final minStr = value.elementAtOrNull(1) == null
+                ? ">${value.elementAtOrNull(0) ?? ''}"
+                : "${value.elementAtOrNull(0) ?? ''}";
+            final maxStr = value.elementAtOrNull(1) == null
+                ? ""
+                : "〜${value.elementAtOrNull(1)}";
+
+            return PopupMenuItem(
+              value: value,
+              child: Text("${minStr}${maxStr}"),
+              onTap: () {
+                setState(() {
+                  _bookmarkNumList = value;
+                  _changeQueryParams();
+                });
+              },
+            );
+          }
+        }).toList();
+      },
+    );
+  }
 
   Widget _buildStar() {
     return PopupMenuButton(
@@ -318,3 +481,262 @@ class _ResultIllustListState extends State<ResultIllustList> {
     );
   }
 }
+
+class ResultIllustSortWidget extends StatefulWidget {
+  final int searchAIType;
+  final String selectSort;
+  final String searchTarget;
+  final UgoiraFilter ugoiraFilter;
+  final Function onPremium;
+  final Function onApply;
+  final Function(
+      {required String searchTarget,
+      required String selectSort,
+      required int searchAIType,
+      required UgoiraFilter ugoiraFilter,
+      required bool recordRememberCurrentSelection}) onSateChange;
+  const ResultIllustSortWidget(
+      {super.key,
+      required this.searchAIType,
+      required this.selectSort,
+      required this.searchTarget,
+      required this.ugoiraFilter,
+      required this.onPremium,
+      required this.onApply,
+      required this.onSateChange});
+
+  @override
+  State<ResultIllustSortWidget> createState() => _ResultIllustSortWidgetState();
+}
+
+class _ResultIllustSortWidgetState extends State<ResultIllustSortWidget> {
+  late int searchAIType = widget.searchAIType;
+  late String selectSort = widget.selectSort;
+  late String searchTarget = widget.searchTarget;
+  late UgoiraFilter ugoiraFilter = widget.ugoiraFilter;
+  final sort = [
+    "date_desc",
+    "date_asc",
+    "popular_desc",
+    "popular_male_desc",
+    "popular_female_desc"
+  ];
+  static List<String> search_target = [
+    "partial_match_for_tags",
+    "exact_match_for_tags",
+    "title_and_caption"
+  ];
+  bool recordRememberCurrentSelection = false;
+  final rememberKey = 'illust_search_result_record_remember_current_selection';
+  @override
+  void initState() {
+    super.initState();
+    initMethod();
+  }
+
+  initMethod() async {
+    if (mounted) {
+      setState(() {
+        recordRememberCurrentSelection = Prefer.getBool(rememberKey) ?? false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final searchTargetMap = {
+      0: I18n.of(context).partial_match_for_tag,
+      1: I18n.of(context).exact_match_for_tag,
+      2: I18n.of(context).title_and_caption,
+    };
+    final selectSortMap = {
+      0: I18n.of(context).date_desc,
+      1: I18n.of(context).date_asc,
+      2: I18n.of(context).popular_desc,
+      if (accountStore.now != null && accountStore.now!.isPremium == 1) ...{
+        3: I18n.of(context).popular_male_desc,
+        4: I18n.of(context).popular_female_desc,
+      }
+    };
+    final ugoiraFilterMap = {
+      UgoiraFilter.all: I18n.of(context).all,
+      UgoiraFilter.onlyUgoira: I18n.of(context).ugoira_only,
+      UgoiraFilter.noUgoira: I18n.of(context).ugoira_none,
+    };
+    return SafeArea(
+      child: Container(
+          width: MediaQuery.of(context).size.width,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: <Widget>[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: <Widget>[
+                    TextButton(
+                        onPressed: () {},
+                        child: Text(I18n.of(context).filter,
+                            style: TextStyle(
+                                color:
+                                    Theme.of(context).colorScheme.secondary))),
+                    TextButton(
+                        onPressed: () {
+                          widget.onSateChange(
+                              searchTarget: searchTarget,
+                              selectSort: selectSort,
+                              searchAIType: searchAIType,
+                              ugoiraFilter: ugoiraFilter,
+                              recordRememberCurrentSelection:
+                                  recordRememberCurrentSelection);
+                          widget.onApply();
+                          Navigator.of(context).pop();
+                        },
+                        child: Text(I18n.of(context).apply,
+                            style: TextStyle(
+                                color:
+                                    Theme.of(context).colorScheme.secondary))),
+                  ],
+                ),
+                Container(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final (index, data)
+                          in searchTargetMap.entries.indexed)
+                        _buildTargetItem(index, data, context),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final (index, data) in selectSortMap.entries.indexed)
+                        _buildSortItem(index, context, data),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Row(
+                    children: [
+                      for (final entry in ugoiraFilterMap.entries)
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                ugoiraFilter = entry.key;
+                              });
+                            },
+                            child: Container(
+                              margin: EdgeInsets.symmetric(horizontal: 4.0),
+                              padding: EdgeInsets.symmetric(vertical: 8.0),
+                              decoration: ugoiraFilter == entry.key
+                                  ? BoxDecoration(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .secondaryContainer,
+                                      borderRadius: BorderRadius.circular(8.0),
+                                    )
+                                  : null,
+                              child: Text(
+                                entry.value,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(fontSize: 12),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                SwitchListTile(
+                  value: searchAIType != 1,
+                  onChanged: (v) {
+                    setState(() {
+                      searchAIType = !v ? 1 : 0;
+                    });
+                  },
+                  title: Text(I18n.of(context).ai_generated),
+                ),
+                SwitchListTile(
+                  value: recordRememberCurrentSelection,
+                  onChanged: (v) async {
+                    await Prefer.setBool(rememberKey, v);
+                    setState(() {
+                      recordRememberCurrentSelection = v;
+                    });
+                  },
+                  title: Text(I18n.of(context).remember_current_selections),
+                ),
+                Container(
+                  height: 16,
+                )
+              ],
+            ),
+          )),
+    );
+  }
+
+  Widget _buildSortItem(
+      int index, BuildContext context, MapEntry<int, String> data) {
+    return GestureDetector(
+      onTap: () {
+        if (accountStore.now != null && index == 2) {
+          if (accountStore.now!.isPremium == 0) {
+            BotToast.showText(text: 'not premium');
+            widget.onPremium();
+            Navigator.of(context).pop();
+            return;
+          }
+        }
+        setState(() {
+          selectSort = sort[index];
+        });
+      },
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        margin: EdgeInsets.only(bottom: 8.0),
+        child: Text(data.value),
+        decoration: selectSort == sort[index]
+            ? BoxDecoration(
+                color: Theme.of(context).colorScheme.secondaryContainer,
+                borderRadius: BorderRadius.circular(8.0),
+              )
+            : null,
+        padding:
+            const EdgeInsets.only(top: 10.0, bottom: 10.0, left: 8, right: 8),
+        alignment: Alignment.centerLeft,
+      ),
+    );
+  }
+
+  Widget _buildTargetItem(
+      int index, MapEntry<int, String> data, BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          searchTarget = search_target[index];
+        });
+      },
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        margin: EdgeInsets.only(bottom: 8.0),
+        child: Text(data.value),
+        decoration: search_target.indexOf(searchTarget) == index
+            ? BoxDecoration(
+                color: Theme.of(context).colorScheme.secondaryContainer,
+                borderRadius: BorderRadius.circular(8.0),
+              )
+            : null,
+        padding:
+            const EdgeInsets.only(top: 10.0, bottom: 10.0, left: 8, right: 8),
+        alignment: Alignment.centerLeft,
+      ),
+    );
+  }
+}
+

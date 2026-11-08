@@ -284,7 +284,9 @@ class _LightingListState extends State<LightingList> {
 
   SliverWaterfallFlowDelegate _buildGridDelegate() {
     var count = 2;
-    if (userSetting.crossAdapt) {
+    if (MediaQuery.of(context).orientation == Orientation.portrait
+        ? userSetting.crossAdapt
+        : userSetting.hCrossAdapt) {
       count = _buildSliderValue();
     } else {
       count = (MediaQuery.of(context).orientation == Orientation.portrait)
@@ -302,7 +304,7 @@ class _LightingListState extends State<LightingList> {
                 ? userSetting.crossAdapterWidth
                 : userSetting.hCrossAdapterWidth)
             .toDouble();
-    var nowAdaptWidth = max(currentValue, 50.0);
+    var nowAdaptWidth = max(currentValue, 250.0);
     nowAdaptWidth = min(nowAdaptWidth, 2160.0);
     final screenWidth = MediaQuery.of(context).size.width;
     final result = max(screenWidth / nowAdaptWidth, 1.0).toInt();

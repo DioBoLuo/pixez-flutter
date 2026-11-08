@@ -17,7 +17,7 @@
 import 'dart:math';
 
 import 'package:easy_refresh/easy_refresh.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:pixez/component/illust_card.dart';
@@ -34,9 +34,16 @@ class WorksPage extends StatefulWidget {
   final int id;
   final String portal;
   final LightingStore store;
+  final String workType;
+  final ValueChanged<String> onWorkTypeChange;
 
   const WorksPage(
-      {Key? key, required this.id, required this.store, required this.portal})
+      {Key? key,
+      required this.id,
+      required this.store,
+      required this.portal,
+      required this.workType,
+      required this.onWorkTypeChange})
       : super(key: key);
 
   @override
@@ -46,6 +53,7 @@ class WorksPage extends StatefulWidget {
 class _WorksPageState extends State<WorksPage> {
   late LightingStore _store;
   late EasyRefreshController _easyRefreshController;
+  late String _workType;
 
   @override
   void initState() {
@@ -55,6 +63,7 @@ class _WorksPageState extends State<WorksPage> {
     _store.easyRefreshController = _easyRefreshController;
     super.initState();
     _store.fetch();
+    _workType = widget.workType;
   }
 
   @override
@@ -63,8 +72,6 @@ class _WorksPageState extends State<WorksPage> {
     _store.dispose();
     super.dispose();
   }
-
-  String now = 'illust';
 
   @override
   Widget build(BuildContext context) {
@@ -147,11 +154,13 @@ class _WorksPageState extends State<WorksPage> {
                         ),
                         const HeaderLocator.sliver(),
                         SliverPersistentHeader(
-                            delegate: SliverChipDelegate(Container(
-                              child: Center(
-                                child: _buildSortChip(),
-                              ),
-                            )),
+                            delegate: SliverChipDelegate(
+                                Container(
+                                  child: Center(
+                                    child: _buildSortChip(),
+                                  ),
+                                ),
+                                height: 52),
                             pinned: true),
                         if (_store.refreshing && _store.iStores.isEmpty)
                           SliverToBoxAdapter(
@@ -177,7 +186,9 @@ class _WorksPageState extends State<WorksPage> {
 
   SliverWaterfallFlowDelegate _buildGridDelegate() {
     var count = 2;
-    if (userSetting.crossAdapt) {
+    if (MediaQuery.of(context).orientation == Orientation.portrait
+        ? userSetting.crossAdapt
+        : userSetting.hCrossAdapt) {
       count = _buildSliderValue();
     } else {
       count = (MediaQuery.of(context).orientation == Orientation.portrait)
@@ -220,8 +231,9 @@ class _WorksPageState extends State<WorksPage> {
       onChange: (index) {
         final type = index == 0 ? 'illust' : 'manga';
         setState(() {
-          now = type;
+          _workType = type;
         });
+        widget.onWorkTypeChange(_workType);
         _store.source = ApiForceSource(
             futureGet: (bool e) => apiClient.getUserIllusts(widget.id, type));
         _store.fetch();
@@ -230,6 +242,7 @@ class _WorksPageState extends State<WorksPage> {
         I18n.of(context).illust,
         I18n.of(context).manga,
       ],
+      initIndex: _workType == 'illust' ? 0 : 1,
     );
   }
 }

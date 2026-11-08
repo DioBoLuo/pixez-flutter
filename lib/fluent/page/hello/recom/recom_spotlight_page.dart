@@ -54,7 +54,7 @@ class _RecomSpolightPageState extends State<RecomSpolightPage>
     ApiForceSource(
         futureGet: (e) => apiClient.getRecommend(), glanceKey: "recom"),
   );
-  final RecomUserStore _recomUserStore = RecomUserStore();
+  final RecomUserStore _recomUserStore = RecomUserStore(null);
   late StreamSubscription<String> subscription;
   final EasyRefreshController _easyRefreshController = EasyRefreshController(
       controlFinishLoad: true, controlFinishRefresh: true);
@@ -152,7 +152,7 @@ class _RecomSpolightPageState extends State<RecomSpolightPage>
             ? userSetting.crossAdapterWidth
             : userSetting.hCrossAdapterWidth)
         .toDouble();
-    var nowAdaptWidth = max(currentValue, 50.0);
+    var nowAdaptWidth = max(currentValue, 250.0);
     nowAdaptWidth = min(nowAdaptWidth, 2160);
     return max((MediaQuery.of(context).size.width / nowAdaptWidth), 1.0)
         .toInt();
@@ -160,7 +160,9 @@ class _RecomSpolightPageState extends State<RecomSpolightPage>
 
   Widget _buildWaterfall(BuildContext context, Orientation orientation) {
     var count = 2;
-    if (userSetting.crossAdapt) {
+    if (orientation == Orientation.portrait
+        ? userSetting.crossAdapt
+        : userSetting.hCrossAdapt) {
       count = _buildSliderValue(context, orientation);
     } else {
       count = (orientation == Orientation.portrait)
@@ -244,9 +246,9 @@ class _RecomSpolightPageState extends State<RecomSpolightPage>
                           child: ButtonTheme(
                             data: ButtonThemeData(
                               iconButtonStyle: ButtonStyle(
-                                padding: ButtonState.all(EdgeInsets.zero),
+                                padding: WidgetStateProperty.all(EdgeInsets.zero),
                                 backgroundColor:
-                                    ButtonState.all(Colors.transparent),
+                                    WidgetStateProperty.all(Colors.transparent),
                               ),
                             ),
                             child: PixEzButton(
@@ -320,8 +322,8 @@ class _RecomSpolightPageState extends State<RecomSpolightPage>
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: [
-                            Colors.black.withOpacity(0.0),
-                            Colors.black.withOpacity(opacity),
+                            Colors.black.withValues(alpha: 255 * 0.0),
+                            Colors.black.withValues(alpha: 255 * opacity),
                           ],
                         ),
                       ),

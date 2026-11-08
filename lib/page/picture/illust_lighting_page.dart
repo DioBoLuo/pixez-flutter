@@ -18,33 +18,35 @@ import 'dart:io';
 
 import 'package:bot_toast/bot_toast.dart';
 import 'package:easy_refresh/easy_refresh.dart';
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:pixez/component/ban_page.dart';
 import 'package:pixez/component/common_back_area.dart';
+import 'package:pixez/component/detail_jump_button.dart';
 import 'package:pixez/component/null_hero.dart';
 import 'package:pixez/component/painter_avatar.dart';
 import 'package:pixez/component/pixez_default_header.dart';
 import 'package:pixez/component/pixiv_image.dart';
-import 'package:pixez/component/selectable_html.dart';
 import 'package:pixez/component/star_icon.dart';
+import 'package:pixez/er/illust_cacher.dart';
 import 'package:pixez/er/leader.dart';
 import 'package:pixez/er/lprinter.dart';
-import 'package:pixez/exts.dart';
 import 'package:pixez/i18n.dart';
 import 'package:pixez/main.dart';
 import 'package:pixez/models/ban_illust_id.dart';
 import 'package:pixez/models/ban_tag.dart';
 import 'package:pixez/models/illust.dart';
-import 'package:pixez/page/comment/comment_page.dart';
 import 'package:pixez/page/picture/illust_about_store.dart';
+import 'package:pixez/page/picture/illust_detail_content.dart';
 import 'package:pixez/page/picture/illust_row_page.dart';
 import 'package:pixez/page/picture/illust_store.dart';
 import 'package:pixez/page/picture/picture_list_page.dart';
 import 'package:pixez/page/picture/tag_for_illust_page.dart';
 import 'package:pixez/page/picture/ugoira_loader.dart';
+import 'package:pixez/page/picture/user_follow_button.dart';
+import 'package:pixez/utils/haptic_util.dart';
 import 'package:pixez/page/report/report_items_page.dart';
 import 'package:pixez/page/search/result_page.dart';
 import 'package:pixez/page/user/user_store.dart';
@@ -59,13 +61,13 @@ class IllustLightingPage extends StatefulWidget {
   final IllustStore? store;
   final GestureDragEndCallback? onHorizontalDragEnd;
 
-  const IllustLightingPage(
-      {Key? key,
-      required this.id,
-      this.heroString,
-      this.store,
-      this.onHorizontalDragEnd})
-      : super(key: key);
+  const IllustLightingPage({
+    Key? key,
+    required this.id,
+    this.heroString,
+    this.store,
+    this.onHorizontalDragEnd,
+  }) : super(key: key);
 
   @override
   State<IllustLightingPage> createState() => _IllustLightingPageState();
@@ -116,13 +118,13 @@ class IllustVerticalPage extends StatefulWidget {
   final IllustStore? store;
   final GestureDragEndCallback? onHorizontalDragEnd;
 
-  const IllustVerticalPage(
-      {Key? key,
-      required this.id,
-      this.heroString,
-      this.store,
-      this.onHorizontalDragEnd})
-      : super(key: key);
+  const IllustVerticalPage({
+    Key? key,
+    required this.id,
+    this.heroString,
+    this.store,
+    this.onHorizontalDragEnd,
+  }) : super(key: key);
 
   @override
   _IllustVerticalPageState createState() => _IllustVerticalPageState();
@@ -136,17 +138,19 @@ class _IllustVerticalPageState extends State<IllustVerticalPage>
   late ScrollController _scrollController;
   late EasyRefreshController _refreshController;
   bool tempView = false;
+  final _detailKey = GlobalKey<ScaffoldState>();
 
   @override
   void initState() {
     _focusNode = FocusNode();
     _refreshController = EasyRefreshController(
-        controlFinishLoad: true, controlFinishRefresh: true);
+      controlFinishLoad: true,
+      controlFinishRefresh: true,
+    );
     _scrollController = ScrollController();
     _illustStore = widget.store ?? IllustStore(widget.id, null);
     _illustStore.fetch();
-    _aboutStore =
-        IllustAboutStore(widget.id, refreshController: _refreshController);
+    _aboutStore = IllustAboutStore(widget.id, _refreshController);
     super.initState();
     supportTranslateCheck();
   }
@@ -157,7 +161,7 @@ class _IllustVerticalPageState extends State<IllustVerticalPage>
     if (oldWidget.store != widget.store) {
       _illustStore = widget.store ?? IllustStore(widget.id, null);
       _illustStore.fetch();
-      _aboutStore = IllustAboutStore(widget.id);
+      _aboutStore = IllustAboutStore(widget.id, _refreshController);
       LPrinter.d("state change");
     }
   }
@@ -165,9 +169,33 @@ class _IllustVerticalPageState extends State<IllustVerticalPage>
   void _loadAbout() {
     if (mounted &&
         _scrollController.hasClients &&
-        _scrollController.offset + 220 >=
-            _scrollController.position.maxScrollExtent &&
-        _aboutStore.illusts.isEmpty) _aboutStore.fetch();
+        _aboutStore.illusts.isEmpty &&
+        !_aboutStore.fetching) {
+      _aboutStore.next();
+    }
+  }
+
+  Future<void> _autoBookmarkAfterSave(Illusts illust) async {
+    if (!userSetting.starAfterSave) {
+      return;
+    }
+    final targetStore = illust.id == _illustStore.id
+        ? _illustStore
+        : IllustStore(illust.id, illust);
+    if (targetStore.state == 0) {
+      await targetStore.star(
+        restrict: userSetting.defaultPrivateLike ? "private" : "public",
+      );
+      try {
+        final targetIllust = _aboutStore.illusts.firstWhere(
+          (e) => e.id == illust.id,
+        );
+        targetIllust.isBookmarked = true;
+        if (mounted) {
+          setState(() {});
+        }
+      } catch (e) {}
+    }
   }
 
   @override
@@ -182,9 +210,7 @@ class _IllustVerticalPageState extends State<IllustVerticalPage>
   Widget _buildAppbar() {
     return Column(
       children: [
-        Container(
-          height: MediaQuery.of(context).padding.top,
-        ),
+        Container(height: MediaQuery.of(context).padding.top),
         Container(
           child: Row(
             mainAxisSize: MainAxisSize.max,
@@ -195,23 +221,26 @@ class _IllustVerticalPageState extends State<IllustVerticalPage>
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  IconButton(
-                      icon: Icon(Icons.expand_less),
-                      onPressed: () {
-                        double p = _scrollController.position.maxScrollExtent -
-                            (_aboutStore.illusts.length / 3.0) *
-                                (MediaQuery.of(context).size.width / 3.0);
-                        if (p < 0) p = 0;
-                        _scrollController.position.jumpTo(p);
-                      }),
-                  IconButton(
-                      icon: Icon(Icons.more_vert),
-                      onPressed: () {
-                        buildShowModalBottomSheet(
-                            context, _illustStore.illusts!);
-                      })
+                  DetailJumpButton(
+                    anchorKey: _detailKey,
+                    scrollController: _scrollController,
+                  ),
+                  Builder(
+                    builder: (buttonContext) {
+                      return IconButton(
+                        icon: Icon(Icons.more_vert),
+                        onPressed: () {
+                          HapticUtil.selectionClick();
+                          buildShowModalBottomSheet(
+                            buttonContext,
+                            _illustStore.illusts!,
+                          );
+                        },
+                      );
+                    },
+                  ),
                 ],
-              )
+              ),
             ],
           ),
         ),
@@ -246,95 +275,137 @@ class _IllustVerticalPageState extends State<IllustVerticalPage>
                 widget.onHorizontalDragEnd!(detail);
               }
             },
-            child: Observer(builder: (context) {
-              return Visibility(
-                visible: _illustStore.errorMessage == null,
-                child: FloatingActionButton(
-                  heroTag: widget.id,
-                  onPressed: () async {
-                    if (userSetting.saveAfterStar &&
-                        (_illustStore.state == 0)) {
-                      saveStore.saveImage(_illustStore.illusts!);
-                    }
-                    _illustStore.star(
+            child: Observer(
+              builder: (context) {
+                return Visibility(
+                  visible: _illustStore.errorMessage == null,
+                  child: FloatingActionButton(
+                    heroTag: widget.id,
+                    onPressed: () async {
+                      if (userSetting.saveAfterStar &&
+                          (_illustStore.state == 0)) {
+                        saveStore.saveImage(_illustStore.illusts!);
+                      }
+                      // TODO: 添加配置项 开关和过滤器
+                      final List<String>? tags;
+                      if (userSetting.autoTagWhenStar) {
+                        final filters = [RegExp(r"\d+users入り")];
+                        tags = _illustStore.illusts!.tags
+                            .map((tag) => tag.name)
+                            .where(
+                              (tag) =>
+                                  !filters.any((regex) => regex.hasMatch(tag)),
+                            )
+                            .toList();
+                      } else {
+                        tags = null;
+                      }
+                      bool success = await _illustStore.star(
                         restrict: userSetting.defaultPrivateLike
                             ? "private"
-                            : "public");
-                    if (userSetting.followAfterStar) {
-                      bool success = await _illustStore.followAfterStar();
-                      if (success) {
-                        BotToast.showText(
+                            : "public",
+                        tags: tags,
+                      );
+                      if (success && userSetting.followAfterStar) {
+                        bool followSuccess = await _illustStore.followAfterStar();
+                        if (followSuccess) {
+                          userStore?.isFollow = true;
+                          BotToast.showText(
                             text:
-                                "${_illustStore.illusts!.user.name} ${I18n.of(context).followed}");
+                                "${_illustStore.illusts!.user.name} ${I18n.of(context).followed}",
+                          );
+                        }
                       }
-                    }
-                  },
-                  child: Observer(builder: (_) {
-                    return StarIcon(
-                      state: _illustStore.state,
-                    );
-                  }),
+                    },
+                    child: Observer(
+                      builder: (_) {
+                        return StarIcon(state: _illustStore.state);
+                      },
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          body: Observer(
+            builder: (_) {
+              final banWidget = banLogic(context);
+              if (banWidget != null) {
+                return banWidget;
+              }
+              return Container(
+                child: Stack(
+                  children: [
+                    _buildContent(context, _illustStore.illusts),
+                    _buildAppbar(),
+                  ],
                 ),
               );
-            }),
+            },
           ),
-          body: Observer(builder: (_) {
-            if (!tempView)
-              for (var i in muteStore.banillusts) {
-                if (i.illustId == widget.id.toString()) {
-                  return BanPage(
-                    name: "${I18n.of(context).illust}\n${i.name}\n",
-                    onPressed: () {
-                      setState(() {
-                        tempView = true;
-                      });
-                    },
-                  );
-                }
-              }
-            if (!tempView && _illustStore.illusts != null) {
-              for (var j in muteStore.banUserIds) {
-                if (j.userId == _illustStore.illusts!.user.id.toString()) {
-                  return BanPage(
-                    name: "${I18n.of(context).painter}\n${j.name}\n",
-                    onPressed: () {
-                      setState(() {
-                        tempView = true;
-                      });
-                    },
-                  );
-                }
-              }
-              for (var t in muteStore.banTags) {
-                for (var t1 in _illustStore.illusts!.tags) {
-                  if (t.name == t1.name)
-                    return BanPage(
-                      name: "${I18n.of(context).tag}\n${t.name}\n",
-                      onPressed: () {
-                        setState(() {
-                          tempView = true;
-                        });
-                      },
-                    );
-                }
-              }
-            }
-            return Container(
-              child: Stack(
-                children: [
-                  _buildContent(context, _illustStore.illusts),
-                  _buildAppbar()
-                ],
-              ),
-            );
-          }),
         ),
       ),
     );
   }
 
+  Widget? banLogic(BuildContext context) {
+    if (tempView) return null;
+    for (var i in muteStore.banillusts) {
+      if (i.illustId == widget.id.toString()) {
+        return BanPage(
+          name: "${I18n.of(context).illust}\n${i.name}\n",
+          onPressed: () {
+            setState(() {
+              tempView = true;
+            });
+          },
+        );
+      }
+    }
+    if (_illustStore.illusts != null) {
+      for (var j in muteStore.banUserIds) {
+        if (j.userId == _illustStore.illusts!.user.id.toString()) {
+          return BanPage(
+            name: "${I18n.of(context).painter}\n${j.name}\n",
+            onPressed: () {
+              setState(() {
+                tempView = true;
+              });
+            },
+          );
+        }
+      }
+      for (var t in muteStore.banTags) {
+        final tags = _illustStore.illusts!.tags;
+        for (var t1 in tags) {
+          if (t.isRegexMatch(t1.name)) {
+            return BanPage(
+              name: "${I18n.of(context).tag}\n${t.name}\n",
+              onPressed: () {
+                setState(() {
+                  tempView = true;
+                });
+              },
+            );
+          }
+        }
+        final allText = tags.map((e) => '#${e.name}').join('');
+        if (t.isRegexMatch(allText)) {
+          return BanPage(
+            name: "${I18n.of(context).tag}\n${t.name}\n",
+            onPressed: () {
+              setState(() {
+                tempView = true;
+              });
+            },
+          );
+        }
+      }
+    }
+    return null;
+  }
+
   bool supportTranslate = false;
-  String _selectedText = "";
 
   Future<void> supportTranslateCheck() async {
     if (!Platform.isAndroid) return;
@@ -346,47 +417,17 @@ class _IllustVerticalPageState extends State<IllustVerticalPage>
     }
   }
 
-  AdaptiveTextSelectionToolbar _buildSelectionMenu(
-      SelectableRegionState editableTextState, BuildContext context) {
-    final List<ContextMenuButtonItem> buttonItems =
-        editableTextState.contextMenuButtonItems;
-    if (supportTranslate) {
-      buttonItems.insert(
-        buttonItems.length,
-        ContextMenuButtonItem(
-          label: I18n.of(context).translate,
-          onPressed: () async {
-            final selectionText = _selectedText;
-            if (Platform.isIOS) {
-              final box = context.findRenderObject() as RenderBox?;
-              final pos = box != null
-                  ? box.localToGlobal(Offset.zero) & box.size
-                  : null;
-              Share.share(selectionText, sharePositionOrigin: pos);
-              return;
-            }
-            await SupportorPlugin.start(selectionText);
-            ContextMenuController.removeAny();
-          },
-        ),
-      );
-    }
-    return AdaptiveTextSelectionToolbar.buttonItems(
-      anchors: editableTextState.contextMenuAnchors,
-      buttonItems: buttonItems,
-    );
-  }
-
   Widget colorText(String text, BuildContext context) {
     return SelectionArea(
       child: Text(
         text,
-        style: TextStyle(color: Theme.of(context).colorScheme.secondary),
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.secondary,
+          fontSize: 12,
+        ),
       ),
     );
   }
-
-  ScrollController scrollController = ScrollController();
 
   Widget _buildContent(BuildContext context, Illusts? data) {
     if (_illustStore.errorMessage != null) return _buildErrorContent(context);
@@ -398,6 +439,7 @@ class _IllustVerticalPageState extends State<IllustVerticalPage>
           ),
         ),
       );
+    if (userStore == null) userStore = UserStore(data.user.id, null, data.user);
     return EasyRefresh(
       controller: _refreshController,
       header: PixezDefault.header(context),
@@ -410,338 +452,179 @@ class _IllustVerticalPageState extends State<IllustVerticalPage>
         slivers: [
           if (userSetting.isBangs || ((data.width / data.height) > 5))
             SliverToBoxAdapter(
-                child: Container(height: MediaQuery.of(context).padding.top)),
+              child: Container(height: MediaQuery.of(context).padding.top),
+            ),
           ..._buildPhotoList(data),
           SliverToBoxAdapter(
-            child: _buildNameAvatar(context, data),
+            child: SizedBox.shrink(key: _detailKey),
           ),
           SliverToBoxAdapter(
-            child: Container(
-              margin: EdgeInsets.symmetric(horizontal: 8.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SelectionArea(
-                    child: Text(
-                      data.title,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ),
-                  SizedBox(
-                    height: 8,
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    children: <Widget>[
-                      Container(child: Text(I18n.of(context).illust_id)),
-                      Container(
-                        width: 10.0,
-                      ),
-                      colorText(data.id.toString(), context),
-                      Container(
-                        width: 20.0,
-                      ),
-                      Container(child: Text(I18n.of(context).pixel)),
-                      Container(
-                        width: 10.0,
-                      ),
-                      colorText("${data.width}x${data.height}", context)
-                    ],
-                  ),
-                  Container(
-                    height: 4,
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    children: <Widget>[
-                      Icon(
-                        Icons.remove_red_eye,
-                        color: Theme.of(context).textTheme.bodySmall!.color,
-                        size: 16,
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.only(left: 2.0),
-                        child: Text(data.totalView.toString(),
-                            style: Theme.of(context).textTheme.bodySmall),
-                      ),
-                      Container(
-                        width: 4.0,
-                      ),
-                      Icon(
-                        Icons.favorite,
-                        color: Theme.of(context).textTheme.bodySmall!.color,
-                        size: 16.0,
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.only(left: 2.0),
-                        child: Text("${data.totalBookmarks}",
-                            style: Theme.of(context).textTheme.bodySmall),
-                      ),
-                      Container(
-                        width: 4.0,
-                      ),
-                      Icon(
-                        Icons.timelapse_rounded,
-                        color: Theme.of(context).textTheme.bodySmall!.color,
-                        size: 16.0,
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.only(left: 2.0),
-                        child: Text(data.createDate.toShortTime(),
-                            style: Theme.of(context).textTheme.bodySmall),
-                      )
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(left: 8.0, right: 8.0, top: 8.0),
-              child: Wrap(
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: 12,
-                runSpacing: 6,
-                children: [
-                  if (data.illustAIType == 2)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.black,
-                        borderRadius:
-                            const BorderRadius.all(Radius.circular(8)),
-                      ),
-                      child: RichText(
-                          textAlign: TextAlign.start,
-                          text: TextSpan(
-                              text: "${I18n.of(context).ai_generated}",
-                              children: [
-                                TextSpan(
-                                  text: " ",
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .titleSmall!
-                                      .copyWith(fontSize: 12),
-                                ),
-                              ],
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleSmall!
-                                  .copyWith(
-                                      color: Colors.white, fontSize: 12))),
-                    ),
-                  for (var f in data.tags) buildRow(context, f)
-                ],
-              ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Container(
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12),
-                child: SelectionArea(
-                  focusNode: _focusNode,
-                  onSelectionChanged: (value) {
-                    _selectedText = value?.plainText ?? "";
-                  },
-                  contextMenuBuilder: (context, selectableRegionState) {
-                    return _buildSelectionMenu(selectableRegionState, context);
-                  },
-                  child: SelectableHtml(
-                    data: data.caption.isEmpty ? "~" : data.caption,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(left: 0.0),
-              child: SelectionContainer.disabled(
-                child: TextButton(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8.0),
-                        child: Icon(
-                          Icons.comment,
-                          size: 16,
-                        ),
-                      ),
-                      Text(
-                        I18n.of(context).view_comment,
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                  onPressed: () {
-                    Navigator.of(context).push(MaterialPageRoute(
-                        builder: (BuildContext context) => CommentPage(
-                              id: data.id,
-                            )));
-                  },
-                ),
-              ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Text(I18n.of(context).about_picture),
+            child: IllustDetailContent(
+              illusts: data,
+              userStore: userStore,
+              illustStore: _illustStore,
+              loadAbout: () {
+                _loadAbout();
+              },
             ),
           ),
           SliverGrid(
-              delegate:
-                  SliverChildBuilderDelegate((BuildContext context, int index) {
-                var list = _aboutStore.illusts
-                    .map((element) => IllustStore(element.id, element))
-                    .toList();
-                return InkWell(
-                  onTap: () {
-                    Leader.push(
-                        context,
-                        PictureListPage(
-                          iStores: list,
-                          lightingStore: null,
-                          store: list[index],
-                        ));
-                  },
-                  onLongPress: () async {
-                    if (userSetting.longPressSaveConfirm) {
-                      final result = await showDialog(
-                          context: context,
-                          builder: (context) {
-                            return AlertDialog(
-                              title: Text(I18n.of(context).save),
-                              content: Text(list[index].illusts?.title ?? ""),
-                              actions: <Widget>[
-                                TextButton(
-                                  child: Text(I18n.of(context).cancel),
-                                  onPressed: () {
-                                    Navigator.of(context).pop(false);
-                                  },
-                                ),
-                                TextButton(
-                                  child: Text(I18n.of(context).ok),
-                                  onPressed: () {
-                                    Navigator.of(context).pop(true);
-                                  },
-                                ),
-                              ],
-                            );
-                          });
-                      if (!result) {
-                        return;
-                      }
+            delegate: SliverChildBuilderDelegate((
+              BuildContext context,
+              int index,
+            ) {
+              var list = _aboutStore.illusts
+                  .map((element) => IllustStore(element.id, element))
+                  .toList();
+              return InkWell(
+                onTap: () {
+                  HapticUtil.selectionClick();
+                  Leader.push(
+                    context,
+                    PictureListPage(
+                      iStores: list,
+                      lightingStore: null,
+                      store: list[index],
+                    ),
+                  );
+                },
+                onLongPress: () async {
+                  HapticUtil.heavy();
+                  if (userSetting.longPressSaveConfirm) {
+                    final result = await showDialog(
+                      context: context,
+                      builder: (context) {
+                        return AlertDialog(
+                          title: Text(I18n.of(context).save),
+                          content: Text(list[index].illusts?.title ?? ""),
+                          actions: <Widget>[
+                            TextButton(
+                              child: Text(I18n.of(context).cancel),
+                              onPressed: () {
+                                Navigator.of(context).pop(false);
+                              },
+                            ),
+                            TextButton(
+                              child: Text(I18n.of(context).ok),
+                              onPressed: () {
+                                Navigator.of(context).pop(true);
+                              },
+                            ),
+                          ],
+                        );
+                      },
+                    );
+                    if (!result) {
+                      return;
                     }
-                    if (userSetting.starAfterSave &&
-                        (_illustStore.state == 0)) {
-                      _illustStore.star(
-                          restrict: userSetting.defaultPrivateLike
-                              ? "private"
-                              : "public");
-                    }
-                    saveStore.saveImage(_aboutStore.illusts[index]);
-                  },
-                  child: PixivImage(
-                    _aboutStore.illusts[index].imageUrls.squareMedium,
-                    enableMemoryCache: false,
-                  ),
-                );
-              }, childCount: _aboutStore.illusts.length),
-              gridDelegate:
-                  SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3))
+                  }
+                  final illust = _aboutStore.illusts[index];
+                  saveStore.saveImage(illust);
+                  await _autoBookmarkAfterSave(illust);
+                },
+                child: PixivImage(
+                  _aboutStore.illusts[index].imageUrls.squareMedium,
+                  enableMemoryCache: false,
+                ),
+              );
+            }, childCount: _aboutStore.illusts.length),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+            ),
+          ),
         ],
       ),
     );
   }
 
   List<Widget> _buildPhotoList(Illusts data) {
-    final height = ((data.height.toDouble() / data.width) *
+    final height =
+        ((data.height.toDouble() / data.width) *
         MediaQuery.of(context).size.width);
     return [
       if (data.type == "ugoira")
         SliverToBoxAdapter(
           child: NullHero(
             tag: widget.heroString,
-            child: UgoiraLoader(
-              id: widget.id,
-              illusts: data,
-            ),
+            child: UgoiraLoader(id: widget.id, illusts: data),
           ),
         ),
       if (data.type != "ugoira")
         data.pageCount == 1
             ? SliverList(
-                delegate: SliverChildBuilderDelegate(
-                    (BuildContext context, int index) {
-                String url = userSetting.pictureQuality == 1
-                    ? data.imageUrls.large
-                    : data.imageUrls.medium;
-                if (data.type == "manga") {
-                  if (userSetting.mangaQuality == 0)
-                    url = data.imageUrls.medium;
-                  else if (userSetting.mangaQuality == 1)
-                    url = data.imageUrls.large;
-                  else
-                    url = data.metaSinglePage!.originalImageUrl!;
-                }
-                Widget placeWidget = Container(height: height);
-                return InkWell(
-                  onLongPress: () {
-                    _pressSave(data, 0);
-                  },
-                  onTap: () {
-                    Leader.push(
+                delegate: SliverChildBuilderDelegate((
+                  BuildContext context,
+                  int index,
+                ) {
+                  String url = data.illustDetailUrl;
+                  if (data.type == "manga") {
+                    url = data.managaDetailUrl;
+                  }
+                  Widget placeWidget = Container(height: height);
+                  return InkWell(
+                    onLongPress: () {
+                      _pressSave(data, 0);
+                    },
+                    onTap: () {
+                      Leader.push(
                         context,
                         PhotoZoomPage(
                           index: 0,
                           illusts: data,
                           illustStore: _illustStore,
-                        ));
-                  },
-                  child: NullHero(
-                    tag: widget.heroString,
-                    child: PixivImage(
-                      url,
-                      fade: false,
-                      width: MediaQuery.of(context).size.width,
-                      placeWidget: (url != data.imageUrls.medium)
-                          ? PixivImage(
-                              data.imageUrls.medium,
-                              width: MediaQuery.of(context).size.width,
-                              placeWidget: placeWidget,
-                              fade: false,
-                            )
-                          : placeWidget,
+                        ),
+                      );
+                    },
+                    child: NullHero(
+                      tag: widget.heroString,
+                      child: PixivImage(
+                        url,
+                        fade: false,
+                        width: MediaQuery.of(context).size.width,
+                        cacheHeaderData: PixEzCacheHeaderData(
+                          key: '${data.id}_0',
+                          quality: IllustQualityExtension.fromValue(
+                            data.type == "manga"
+                                ? userSetting.mangaQuality
+                                : userSetting.pictureQuality,
+                          ),
+                        ),
+                        placeWidget: (url != data.imageUrls.medium)
+                            ? PixivImage(
+                                data.imageUrls.medium,
+                                width: MediaQuery.of(context).size.width,
+                                placeWidget: placeWidget,
+                                fade: false,
+                              )
+                            : placeWidget,
+                      ),
                     ),
-                  ),
-                );
-              }, childCount: 1))
+                  );
+                }, childCount: 1),
+              )
             : SliverList(
-                delegate: SliverChildBuilderDelegate(
-                    (BuildContext context, int index) {
-                return InkWell(
+                delegate: SliverChildBuilderDelegate((
+                  BuildContext context,
+                  int index,
+                ) {
+                  return InkWell(
                     onLongPress: () {
                       _pressSave(data, index);
                     },
                     onTap: () {
                       Leader.push(
-                          context,
-                          PhotoZoomPage(
-                            index: index,
-                            illusts: data,
-                            illustStore: _illustStore,
-                          ));
+                        context,
+                        PhotoZoomPage(
+                          index: index,
+                          illusts: data,
+                          illustStore: _illustStore,
+                        ),
+                      );
                     },
-                    child: _buildIllustsItem(index, data, height));
-              }, childCount: data.metaPages.length)),
+                    child: _buildIllustsItem(index, data, height),
+                  );
+                }, childCount: data.metaPages.length),
+              ),
     ];
   }
 
@@ -753,19 +636,18 @@ class _IllustVerticalPageState extends State<IllustVerticalPage>
         children: <Widget>[
           Padding(
             padding: const EdgeInsets.all(8.0),
-            child:
-                Text(':(', style: Theme.of(context).textTheme.headlineMedium),
+            child: Text(
+              ':(',
+              style: Theme.of(context).textTheme.headlineMedium,
+            ),
           ),
-          Text(
-            '${_illustStore.errorMessage}',
-            maxLines: 5,
-          ),
+          Text('${_illustStore.errorMessage}', maxLines: 5),
           ElevatedButton(
             onPressed: () {
               _illustStore.fetch();
             },
             child: Text(I18n.of(context).refresh),
-          )
+          ),
         ],
       ),
     );
@@ -773,13 +655,7 @@ class _IllustVerticalPageState extends State<IllustVerticalPage>
 
   Widget _buildIllustsItem(int index, Illusts illust, double height) {
     if (illust.type == "manga") {
-      String url;
-      if (userSetting.mangaQuality == 0)
-        url = illust.metaPages[index].imageUrls!.medium;
-      else if (userSetting.mangaQuality == 1)
-        url = illust.metaPages[index].imageUrls!.large;
-      else
-        url = illust.metaPages[index].imageUrls!.original;
+      String url = illust.managaDetailImageUrl(index);
       if (index == 0)
         return NullHero(
           child: PixivImage(
@@ -788,6 +664,12 @@ class _IllustVerticalPageState extends State<IllustVerticalPage>
               illust.metaPages[index].imageUrls!.medium,
               width: MediaQuery.of(context).size.width,
               fade: false,
+            ),
+            cacheHeaderData: PixEzCacheHeaderData(
+              key: '${illust.id}_${index}',
+              quality: IllustQualityExtension.fromValue(
+                userSetting.mangaQuality,
+              ),
             ),
             width: MediaQuery.of(context).size.width,
             fade: false,
@@ -798,45 +680,67 @@ class _IllustVerticalPageState extends State<IllustVerticalPage>
         url,
         fade: false,
         width: MediaQuery.of(context).size.width,
+        cacheHeaderData: PixEzCacheHeaderData(
+          key: '${illust.id}_${index}',
+          quality: IllustQualityExtension.fromValue(userSetting.mangaQuality),
+        ),
         placeWidget: Container(
           height: height,
           child: Center(
-            child: Text('$index',
-                style: Theme.of(context).textTheme.headlineMedium),
+            child: Text(
+              '$index',
+              style: Theme.of(context).textTheme.headlineMedium,
+            ),
           ),
         ),
       );
     }
     return index == 0
-        ? (userSetting.pictureQuality == 1
-            ? NullHero(
-                child: PixivImage(
-                  illust.metaPages[index].imageUrls!.large,
-                  placeWidget: PixivImage(
+        ? (userSetting.pictureQuality >= 1
+              ? NullHero(
+                  child: PixivImage(
+                    illust.illustDetailImageUrl(index),
+                    placeWidget: PixivImage(
+                      illust.metaPages[index].imageUrls!.medium,
+                      fade: false,
+                    ),
+                    fade: false,
+                    cacheHeaderData: PixEzCacheHeaderData(
+                      key: '${illust.id}_${index}',
+                      quality: IllustQualityExtension.fromValue(
+                        userSetting.pictureQuality,
+                      ),
+                    ),
+                  ),
+                  tag: widget.heroString,
+                )
+              : NullHero(
+                  child: PixivImage(
                     illust.metaPages[index].imageUrls!.medium,
                     fade: false,
+                    cacheHeaderData: PixEzCacheHeaderData(
+                      key: '${illust.id}_${index}',
+                      quality: IllustQuality.medium,
+                    ),
                   ),
-                  fade: false,
-                ),
-                tag: widget.heroString,
-              )
-            : NullHero(
-                child: PixivImage(
-                  illust.metaPages[index].imageUrls!.medium,
-                  fade: false,
-                ),
-                tag: widget.heroString,
-              ))
+                  tag: widget.heroString,
+                ))
         : PixivImage(
-            userSetting.pictureQuality == 0
-                ? illust.metaPages[index].imageUrls!.medium
-                : illust.metaPages[index].imageUrls!.large,
+            illust.illustDetailImageUrl(index),
+            cacheHeaderData: PixEzCacheHeaderData(
+              key: '${illust.id}_${index}',
+              quality: IllustQualityExtension.fromValue(
+                userSetting.pictureQuality,
+              ),
+            ),
             fade: false,
             placeWidget: Container(
-              height: 150,
+              height: height,
               child: Center(
-                child: Text('$index',
-                    style: Theme.of(context).textTheme.headlineMedium),
+                child: Text(
+                  '$index',
+                  style: Theme.of(context).textTheme.headlineMedium,
+                ),
               ),
             ),
           );
@@ -844,36 +748,54 @@ class _IllustVerticalPageState extends State<IllustVerticalPage>
 
   Future _longPressTag(BuildContext context, Tags f) async {
     switch (await showDialog(
-        context: context,
-        builder: (BuildContext context) {
-          return SimpleDialog(
-            title: Text(f.name),
-            children: <Widget>[
-              SimpleDialogOption(
-                onPressed: () {
-                  Navigator.pop(context, 0);
-                },
-                child: Text(I18n.of(context).ban),
-              ),
-              SimpleDialogOption(
-                onPressed: () {
-                  Navigator.pop(context, 1);
-                },
-                child: Text(I18n.of(context).bookmark),
-              ),
-              SimpleDialogOption(
-                onPressed: () {
-                  Navigator.pop(context, 2);
-                },
-                child: Text(I18n.of(context).copy),
-              ),
-            ],
-          );
-        })) {
+      context: context,
+      builder: (BuildContext context) {
+        return SimpleDialog(
+          title: RichText(
+            text: TextSpan(
+              children: [
+                TextSpan(
+                  text: "${f.name}",
+                  style: Theme.of(context).textTheme.bodyLarge!.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+                if (f.translatedName != null)
+                  TextSpan(
+                    text: "\n${"${f.translatedName}"}",
+                    style: Theme.of(context).textTheme.bodyLarge!,
+                  ),
+              ],
+            ),
+          ),
+          children: <Widget>[
+            SimpleDialogOption(
+              onPressed: () {
+                Navigator.pop(context, 0);
+              },
+              child: Text(I18n.of(context).ban),
+            ),
+            SimpleDialogOption(
+              onPressed: () {
+                Navigator.pop(context, 1);
+              },
+              child: Text(I18n.of(context).bookmark),
+            ),
+            SimpleDialogOption(
+              onPressed: () {
+                Navigator.pop(context, 2);
+              },
+              child: Text(I18n.of(context).copy),
+            ),
+          ],
+        );
+      },
+    )) {
       case 0:
         {
-          muteStore.insertBanTag(BanTagPersist(
-              name: f.name, translateName: f.translatedName ?? ""));
+          muteStore.insertBanTag(
+            BanTagPersist(name: f.name, translateName: f.translatedName ?? ""),
+          );
         }
         break;
       case 1:
@@ -883,11 +805,14 @@ class _IllustVerticalPageState extends State<IllustVerticalPage>
         break;
       case 2:
         {
+          HapticUtil.light();
           await Clipboard.setData(ClipboardData(text: f.name));
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            duration: Duration(seconds: 1),
-            content: Text(I18n.of(context).copied_to_clipboard),
-          ));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              duration: Duration(seconds: 1),
+              content: Text(I18n.of(context).copied_to_clipboard),
+            ),
+          );
         }
     }
   }
@@ -895,208 +820,218 @@ class _IllustVerticalPageState extends State<IllustVerticalPage>
   Widget buildRow(BuildContext context, Tags f) {
     return GestureDetector(
       onLongPress: () async {
+        HapticUtil.heavy();
         await _longPressTag(context, f);
       },
       onTap: () {
-        Navigator.of(context).push(MaterialPageRoute(builder: (context) {
-          return ResultPage(
-            word: f.name,
-            translatedName: f.translatedName ?? "",
-          );
-        }));
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) {
+              return ResultPage(
+                word: f.name,
+                translatedName: f.translatedName ?? "",
+              );
+            },
+          ),
+        );
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        height: 25,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.secondaryContainer,
-          borderRadius: const BorderRadius.all(Radius.circular(8)),
+          color: Theme.of(context).colorScheme.primaryContainer,
+          borderRadius: const BorderRadius.all(Radius.circular(12.5)),
         ),
-        child: RichText(
-            textAlign: TextAlign.start,
-            text: TextSpan(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            RichText(
+              textAlign: TextAlign.start,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+              text: TextSpan(
                 text: "#${f.name}",
                 children: [
                   TextSpan(
                     text: " ",
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleSmall!
-                        .copyWith(fontSize: 12),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.titleSmall!.copyWith(fontSize: 12),
                   ),
-                  TextSpan(
-                      text: "${f.translatedName ?? "~"}",
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleSmall!
-                          .copyWith(fontSize: 12))
+                  if (f.translatedName != null)
+                    TextSpan(
+                      text: "${f.translatedName}",
+                      style: Theme.of(
+                        context,
+                      ).textTheme.titleSmall!.copyWith(fontSize: 12),
+                    ),
                 ],
                 style: Theme.of(context).textTheme.titleSmall!.copyWith(
-                    color: Theme.of(context).colorScheme.secondary,
-                    fontSize: 12))),
+                  color: Theme.of(context).colorScheme.primary,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildNameAvatar(BuildContext context, Illusts illust) {
     if (userStore == null)
-      userStore = UserStore(illust.user.id, user: illust.user);
-    return Observer(builder: (_) {
-      Future.delayed(Duration(seconds: 2), () {
-        _loadAbout();
-      });
-      return InkWell(
-        onTap: () async {
-          await Leader.push(
-              context,
-              UsersPage(
-                id: illust.user.id,
-                userStore: userStore,
-                heroTag: this.hashCode.toString(),
-              ));
-          _illustStore.illusts!.user.isFollowed = userStore!.isFollow;
-        },
-        onLongPress: () {
-          userStore!.follow();
-        },
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.start,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: <Widget>[
-            Padding(
-                child: GestureDetector(
-                  onLongPress: () {
-                    userStore!.follow();
-                  },
-                  child: Container(
-                    height: 32,
-                    width: 32,
-                    child: Stack(
-                      children: <Widget>[
-                        Center(
-                          child: SizedBox(
-                            height: 32,
-                            width: 32,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: userStore!.isFollow
-                                    ? Colors.yellow
-                                    : Theme.of(context).colorScheme.secondary,
-                              ),
-                            ),
-                          ),
+      userStore = UserStore(illust.user.id, null, illust.user);
+    return Observer(
+      builder: (_) {
+        Future.delayed(Duration(seconds: 2), () {
+          _loadAbout();
+        });
+        return InkWell(
+          onTap: () async {
+            await _push2UserPage(context, illust);
+          },
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: <Widget>[
+              Padding(
+                child: Hero(
+                  tag:
+                      illust.user.profileImageUrls.medium +
+                      this.hashCode.toString(),
+                  child: PainterAvatar(
+                    url: illust.user.profileImageUrls.medium,
+                    id: illust.user.id,
+                    size: Size(32, 32),
+                    onTap: () async {
+                      await Leader.push(
+                        context,
+                        UsersPage(
+                          id: illust.user.id,
+                          userStore: userStore,
+                          heroTag: this.hashCode.toString(),
                         ),
-                        Center(
-                          child: Hero(
-                            tag: illust.user.profileImageUrls.medium +
-                                this.hashCode.toString(),
-                            child: PainterAvatar(
-                              url: illust.user.profileImageUrls.medium,
-                              id: illust.user.id,
-                              size: Size(28, 28),
-                              onTap: () async {
-                                await Leader.push(
-                                    context,
-                                    UsersPage(
-                                      id: illust.user.id,
-                                      userStore: userStore,
-                                      heroTag: this.hashCode.toString(),
-                                    ));
-                                _illustStore.illusts!.user.isFollowed =
-                                    userStore!.isFollow;
-                              },
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                      );
+                      _illustStore.illusts!.user.isFollowed =
+                          userStore!.isFollow;
+                    },
                   ),
                 ),
-                padding: EdgeInsets.all(8.0)),
-            Expanded(
-              child: Padding(
-                padding: EdgeInsets.all(8.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  children: <Widget>[
-                    Hero(
-                      tag: illust.user.name + this.hashCode.toString(),
-                      child: SelectionArea(
-                        child: Text(
-                          illust.user.name,
-                          style: TextStyle(
-                              color:
-                                  Theme.of(context).textTheme.bodySmall!.color),
+                padding: EdgeInsets.only(left: 16.0),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.all(12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.start,
+                    children: <Widget>[
+                      Hero(
+                        tag: illust.user.name + this.hashCode.toString(),
+                        child: SelectionArea(
+                          child: Text(
+                            illust.user.name,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Theme.of(
+                                context,
+                              ).textTheme.bodySmall!.color,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
-      );
-    });
+              UserFollowButton(
+                id: illust.user.id,
+                followed:
+                    userStore?.isFollow ?? illust.user.isFollowed ?? false,
+                onPressed: () async {
+                  await userStore?.follow();
+                  if (userStore?.isFollow != null) {
+                    _illustStore.illusts?.user.isFollowed = userStore?.isFollow;
+                  }
+                },
+                onConfirm: (follow, restrict) {
+                  userStore?.followWithRestrict(follow, restrict);
+                  if (userStore?.isFollow != null) {
+                    _illustStore.illusts?.user.isFollowed = userStore?.isFollow;
+                  }
+                },
+              ),
+              SizedBox(width: 12),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _push2UserPage(BuildContext context, Illusts illust) async {
+    await Leader.push(
+      context,
+      UsersPage(
+        id: illust.user.id,
+        userStore: userStore,
+        heroTag: this.hashCode.toString(),
+      ),
+    );
+    _illustStore.illusts!.user.isFollowed = userStore!.isFollow;
   }
 
   Future<void> _pressSave(Illusts illust, int index) async {
+    HapticUtil.heavy();
+    if (userSetting.illustDetailSaveSkipLongPress) {
+      saveStore.saveImage(illust, index: index);
+      await _autoBookmarkAfterSave(illust);
+      return;
+    }
     showModalBottomSheet(
-        context: context,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(16),
+      context: context,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (c1) {
+        return Container(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              illust.metaPages.isNotEmpty
+                  ? ListTile(
+                      title: Text(I18n.of(context).muti_choice_save),
+                      leading: Icon(Icons.save),
+                      onTap: () async {
+                        Navigator.of(context).pop();
+                        _showMutiChoiceDialog(illust, context);
+                      },
+                    )
+                  : Container(),
+              ListTile(
+                leading: Icon(Icons.save_alt),
+                onTap: () async {
+                  Navigator.of(context).pop();
+                  saveStore.saveImage(illust, index: index);
+                  await _autoBookmarkAfterSave(illust);
+                },
+                onLongPress: () async {
+                  Navigator.of(context).pop();
+                  saveStore.saveImage(illust, index: index);
+                },
+                title: Text(I18n.of(context).save),
+              ),
+              ListTile(
+                leading: Icon(Icons.cancel),
+                onTap: () => Navigator.of(context).pop(),
+                title: Text(I18n.of(context).cancel),
+              ),
+              Container(height: MediaQuery.of(c1).padding.bottom),
+            ],
           ),
-        ),
-        builder: (c1) {
-          return Container(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                illust.metaPages.isNotEmpty
-                    ? ListTile(
-                        title: Text(I18n.of(context).muti_choice_save),
-                        leading: Icon(
-                          Icons.save,
-                        ),
-                        onTap: () async {
-                          Navigator.of(context).pop();
-                          _showMutiChoiceDialog(illust, context);
-                        },
-                      )
-                    : Container(),
-                ListTile(
-                  leading: Icon(Icons.save_alt),
-                  onTap: () async {
-                    Navigator.of(context).pop();
-                    saveStore.saveImage(illust, index: index);
-                    if (userSetting.starAfterSave &&
-                        (_illustStore.state == 0)) {
-                      _illustStore.star(
-                          restrict: userSetting.defaultPrivateLike
-                              ? "private"
-                              : "public");
-                    }
-                  },
-                  onLongPress: () async {
-                    Navigator.of(context).pop();
-                    saveStore.saveImage(illust, index: index);
-                  },
-                  title: Text(I18n.of(context).save),
-                ),
-                ListTile(
-                  leading: Icon(Icons.cancel),
-                  onTap: () => Navigator.of(context).pop(),
-                  title: Text(I18n.of(context).cancel),
-                ),
-                Container(
-                  height: MediaQuery.of(c1).padding.bottom,
-                )
-              ],
-            ),
-          );
-        });
+        );
+      },
+    );
   }
 
   Future _showMutiChoiceDialog(Illusts illust, BuildContext context) async {
@@ -1106,12 +1041,14 @@ class _IllustVerticalPageState extends State<IllustVerticalPage>
       indexs.add(false);
     }
     final result = await showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(16.0))),
-        builder: (context) {
-          return StatefulBuilder(builder: (context, setDialogState) {
+      context: context,
+      isScrollControlled: true,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
             return SafeArea(
               child: SizedBox(
                 height: MediaQuery.of(context).size.height * 0.8,
@@ -1128,58 +1065,65 @@ class _IllustVerticalPageState extends State<IllustVerticalPage>
                         itemBuilder: (context, index) {
                           final data = illust.metaPages[index];
                           return Container(
-                              child: Padding(
-                            padding: const EdgeInsets.all(8.0),
-                            child: InkWell(
-                              onTap: () {
-                                setDialogState(() {
-                                  indexs[index] = !indexs[index];
-                                });
-                              },
-                              onLongPress: () {
-                                Leader.push(
+                            child: Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: InkWell(
+                                onTap: () {
+                                  setDialogState(() {
+                                    indexs[index] = !indexs[index];
+                                  });
+                                },
+                                onLongPress: () {
+                                  Leader.push(
                                     context,
                                     PhotoZoomPage(
                                       index: index,
                                       illusts: illust,
                                       illustStore: _illustStore,
-                                    ));
-                              },
-                              child: Stack(
-                                children: [
-                                  PixivImage(
-                                    data.imageUrls!.squareMedium,
-                                    placeWidget: Container(
-                                      child: Center(
-                                        child: Text(index.toString()),
+                                    ),
+                                  );
+                                },
+                                child: Stack(
+                                  children: [
+                                    PixivImage(
+                                      data.imageUrls!.squareMedium,
+                                      placeWidget: Container(
+                                        child: Center(
+                                          child: Text(index.toString()),
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  Align(
+                                    Align(
                                       alignment: Alignment.bottomRight,
                                       child: Visibility(
-                                          visible: indexs[index],
-                                          child: Padding(
-                                            padding: const EdgeInsets.all(4.0),
-                                            child: Icon(
-                                              Icons.check_circle,
-                                              color: Colors.green,
-                                            ),
-                                          ))),
-                                ],
+                                        visible: indexs[index],
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(4.0),
+                                          child: Icon(
+                                            Icons.check_circle,
+                                            color: Colors.green,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                          ));
+                          );
                         },
                         itemCount: illust.metaPages.length,
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 3),
+                          crossAxisCount: 3,
+                        ),
                       ),
                     ),
                     ListTile(
-                      leading: Icon(!allOn
-                          ? Icons.check_circle_outline
-                          : Icons.check_circle),
+                      leading: Icon(
+                        !allOn
+                            ? Icons.check_circle_outline
+                            : Icons.check_circle,
+                      ),
                       title: Text(I18n.of(context).all),
                       onTap: () {
                         allOn = !allOn;
@@ -1192,14 +1136,18 @@ class _IllustVerticalPageState extends State<IllustVerticalPage>
                     ListTile(
                       leading: Icon(Icons.save),
                       title: Text(I18n.of(context).save),
-                      onTap: () {
+                      onTap: () async {
                         Navigator.of(context).pop("OK");
                         if (userSetting.starAfterSave &&
                             (_illustStore.state == 0)) {
-                          _illustStore.star(
-                              restrict: userSetting.defaultPrivateLike
-                                  ? "private"
-                                  : "public");
+                          bool success = await _illustStore.star(
+                            restrict: userSetting.defaultPrivateLike
+                                ? "private"
+                                : "public",
+                          );
+                          if (success && userSetting.followAfterStar) {
+                            await _illustStore.followAfterStar();
+                          }
                         }
                       },
                     ),
@@ -1207,8 +1155,10 @@ class _IllustVerticalPageState extends State<IllustVerticalPage>
                 ),
               ),
             );
-          });
-        });
+          },
+        );
+      },
+    );
     switch (result) {
       case "OK":
         {
@@ -1218,114 +1168,125 @@ class _IllustVerticalPageState extends State<IllustVerticalPage>
   }
 
   Future buildShowModalBottomSheet(BuildContext context, Illusts illusts) {
-    return showModalBottomSheet(
-        isScrollControlled: true,
-        context: context,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(16),
-          ),
-        ),
-        builder: (_) {
-          return Container(
-            decoration: BoxDecoration(
-                borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(8.0),
-                    topRight: Radius.circular(8.0))),
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    children: <Widget>[
-                      _buildNameAvatar(context, illusts),
-                      if (illusts.metaPages.isNotEmpty)
+    final buttonBox = context.findRenderObject() as RenderBox?;
+    final shareOrigin = buttonBox != null
+        ? buttonBox.localToGlobal(Offset.zero) & buttonBox.size
+        : null;
+    return showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.black.withValues(alpha: 0.35),
+      transitionDuration: const Duration(milliseconds: 180),
+      pageBuilder: (dialogContext, animation, secondaryAnimation) {
+        final width =
+            (MediaQuery.sizeOf(dialogContext).width - 24).clamp(0.0, 320.0);
+        return SafeArea(
+          child: Align(
+            alignment: Alignment.topRight,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 4, right: 12, left: 12),
+              child: Material(
+                color: Theme.of(dialogContext).colorScheme.surface,
+                elevation: 8,
+                shadowColor: Colors.black26,
+                borderRadius: BorderRadius.circular(14),
+                clipBehavior: Clip.antiAlias,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: width,
+                    maxHeight: MediaQuery.sizeOf(dialogContext).height * 0.75,
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        SizedBox(height: 8),
+                        _buildNameAvatar(dialogContext, illusts),
+                        if (illusts.metaPages.isNotEmpty)
+                          ListTile(
+                            title: Text(I18n.of(dialogContext).muti_choice_save),
+                            leading: Icon(Icons.save),
+                            onTap: () async {
+                              Navigator.of(dialogContext).pop();
+                              _showMutiChoiceDialog(illusts, context);
+                            },
+                          ),
                         ListTile(
-                          title: Text(I18n.of(context).muti_choice_save),
-                          leading: Icon(
-                            Icons.save,
-                          ),
+                          title: Text(I18n.of(dialogContext).copymessage),
+                          leading: Icon(Icons.local_library),
                           onTap: () async {
-                            Navigator.of(context).pop();
-                            _showMutiChoiceDialog(illusts, context);
+                            final str =
+                                userSetting.illustToShareInfoText(illusts);
+                            await Clipboard.setData(ClipboardData(text: str));
+                            BotToast.showText(
+                              text: I18n.of(dialogContext).copied_to_clipboard,
+                            );
+                            Navigator.of(dialogContext).pop();
                           },
                         ),
-                      ListTile(
-                        title: Text(I18n.of(context).copymessage),
-                        leading: Icon(
-                          Icons.local_library,
-                        ),
-                        onTap: () async {
-                          final str =
-                              userSetting.illustToShareInfoText(illusts);
-                          await Clipboard.setData(ClipboardData(text: str));
-                          BotToast.showText(
-                              text: I18n.of(context).copied_to_clipboard);
-                          Navigator.of(context).pop();
-                        },
-                      ),
-                      Builder(builder: (context) {
-                        return ListTile(
-                          title: Text(I18n.of(context).share),
-                          leading: Icon(
-                            Icons.share,
-                          ),
+                        ListTile(
+                          title: Text(I18n.of(dialogContext).share),
+                          leading: Icon(Icons.share),
                           onTap: () {
-                            final box =
-                                context.findRenderObject() as RenderBox?;
-                            final pos = box != null
-                                ? box.localToGlobal(Offset.zero) & box.size
-                                : null;
-                            Navigator.of(context).pop();
-                            Share.share(
-                                "https://www.pixiv.net/artworks/${widget.id}",
-                                sharePositionOrigin: pos);
+                            Navigator.of(dialogContext).pop();
+                            SharePlus.instance.share(
+                              ShareParams(
+                                text:
+                                    "https://www.pixiv.net/artworks/${widget.id}",
+                                sharePositionOrigin: shareOrigin,
+                              ),
+                            );
                           },
-                        );
-                      }),
-                      ListTile(
-                        leading: Icon(
-                          Icons.link,
                         ),
-                        title: Text(I18n.of(context).link),
-                        onTap: () async {
-                          await Clipboard.setData(ClipboardData(
-                              text:
-                                  "https://www.pixiv.net/artworks/${widget.id}"));
-                          BotToast.showText(
-                              text: I18n.of(context).copied_to_clipboard);
-                          Navigator.of(context).pop();
-                        },
-                      ),
-                      ListTile(
-                        title: Text(I18n.of(context).ban),
-                        leading: Icon(Icons.brightness_auto),
-                        onTap: () {
-                          muteStore.insertBanIllusts(BanIllustIdPersist(
-                              illustId: widget.id.toString(),
-                              name: illusts.title));
-                          Navigator.pop(context);
-                        },
-                      ),
-                      ListTile(
-                        title: Text(I18n.of(context).report),
-                        leading: Icon(Icons.report),
-                        onTap: () async {
-                          if (Platform.isAndroid) {
-                            Navigator.of(context).pop();
-                            await Reporter.show(
+                        ListTile(
+                          leading: Icon(Icons.link),
+                          title: Text(I18n.of(dialogContext).link),
+                          onTap: () async {
+                            await Clipboard.setData(
+                              ClipboardData(
+                                text:
+                                    "https://www.pixiv.net/artworks/${widget.id}",
+                              ),
+                            );
+                            BotToast.showText(
+                              text: I18n.of(dialogContext).copied_to_clipboard,
+                            );
+                            Navigator.of(dialogContext).pop();
+                          },
+                        ),
+                        ListTile(
+                          title: Text(I18n.of(dialogContext).ban),
+                          leading: Icon(Icons.brightness_auto),
+                          onTap: () {
+                            muteStore.insertBanIllusts(
+                              BanIllustIdPersist(
+                                illustId: widget.id.toString(),
+                                name: illusts.title,
+                              ),
+                            );
+                            Navigator.of(dialogContext).pop();
+                          },
+                        ),
+                        ListTile(
+                          title: Text(I18n.of(dialogContext).report),
+                          leading: Icon(Icons.report),
+                          onTap: () async {
+                            if (Platform.isAndroid) {
+                              Navigator.of(dialogContext).pop();
+                              await Reporter.show(
                                 context,
                                 () async => await muteStore.insertBanIllusts(
-                                    BanIllustIdPersist(
-                                        illustId: widget.id.toString(),
-                                        name: illusts.title)));
-                          } else {
-                            await showDialog(
-                                context: context,
+                                  BanIllustIdPersist(
+                                    illustId: widget.id.toString(),
+                                    name: illusts.title,
+                                  ),
+                                ),
+                              );
+                            } else {
+                              await showDialog(
+                                context: dialogContext,
                                 builder: (context) {
                                   return AlertDialog(
                                     title: Text(I18n.of(context).report),
@@ -1346,25 +1307,44 @@ class _IllustVerticalPageState extends State<IllustVerticalPage>
                                       ),
                                     ],
                                   );
-                                });
-                          }
-                        },
-                      )
-                    ],
+                                },
+                              );
+                            }
+                          },
+                        ),
+                        SizedBox(height: 8),
+                      ],
+                    ),
                   ),
-                  Container(
-                    height: MediaQuery.of(context).padding.bottom,
-                  )
-                ],
+                ),
               ),
             ),
-          );
-        });
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
+        return FadeTransition(
+          opacity: curved,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.92, end: 1.0).animate(curved),
+            alignment: Alignment.topRight,
+            child: child,
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _showBookMarkTag() async {
-    final result =
-        await Leader.pushWithScaffold(context, TagForIllustPage(id: widget.id));
+    HapticUtil.heavy();
+    final result = await Leader.pushWithScaffold(
+      context,
+      TagForIllustPage(id: widget.id),
+    );
     if (result is Map) {
       LPrinter.d(result);
       String restrict = result['restrict'];
@@ -1372,7 +1352,10 @@ class _IllustVerticalPageState extends State<IllustVerticalPage>
       if (userSetting.saveAfterStar && (_illustStore.state == 0)) {
         saveStore.saveImage(_illustStore.illusts!);
       }
-      _illustStore.star(restrict: restrict, tags: tags, force: true);
+      bool success = await _illustStore.star(restrict: restrict, tags: tags, force: true);
+      if (success && userSetting.followAfterStar) {
+        await _illustStore.followAfterStar();
+      }
     }
   }
 

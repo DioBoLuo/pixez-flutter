@@ -17,7 +17,6 @@
 import 'dart:async';
 
 import 'package:fluent_ui/fluent_ui.dart';
-import 'package:flutter/material.dart' show showDatePicker;
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:pixez/i18n.dart';
 import 'package:pixez/main.dart';
@@ -34,18 +33,8 @@ class RankPage extends StatefulWidget {
 class _RankPageState extends State<RankPage>
     with AutomaticKeepAliveClientMixin {
   late RankStore rankStore;
-  final modeList = [
-    "day",
-    "day_male",
-    "day_female",
-    "week_original",
-    "week_rookie",
-    "week",
-    "month",
-    "day_r18",
-    "week_r18",
-    "week_r18g"
-  ];
+  // Must match the order of I18n mode_list and what RankStore saves.
+  List<String> get modeList => rankStore.intialModeList;
   var boolList = Map<int, bool>();
   late DateTime nowDate;
   late StreamSubscription<String> subscription;
@@ -76,15 +65,12 @@ class _RankPageState extends State<RankPage>
       }
     });
 
-    Future.delayed(
-      Duration.zero,
-      () {
-        if (rankStore.inChoice || rankStore.modeList.isEmpty) {
-          final rankListMean = I18n.of(context).mode_list.split(' ');
-          _choicePage(context, rankListMean);
-        }
-      },
-    );
+    Future.delayed(Duration.zero, () {
+      if (rankStore.inChoice || rankStore.modeList.isEmpty) {
+        final rankListMean = I18n.of(context).mode_list.split(' ');
+        _choicePage(context, rankListMean);
+      }
+    });
   }
 
   String toRequestDate(DateTime dateTime) {
@@ -97,8 +83,10 @@ class _RankPageState extends State<RankPage>
 
   // 获取AppBar的高度，方便实现动画
   Future<double> initAppBarHeight() async {
-    Size? appBarSize =
-        appBarKey.currentContext?.findRenderObject()?.paintBounds.size;
+    Size? appBarSize = appBarKey.currentContext
+        ?.findRenderObject()
+        ?.paintBounds
+        .size;
     if (appBarSize != null) {
       return appBarSize.height;
     } else {
@@ -110,41 +98,37 @@ class _RankPageState extends State<RankPage>
   Widget build(BuildContext context) {
     super.build(context);
     final rankListMean = I18n.of(context).mode_list.split(' ');
-    return Observer(builder: (_) {
-      if (rankStore.inChoice) {
-        return Container(
-          child: Center(
-            child: FilledButton(
-              child: Text(I18n.of(context).choice_you_like),
-              onPressed: () => _choicePage(context, rankListMean),
+    return Observer(
+      builder: (_) {
+        if (rankStore.inChoice) {
+          return Container(
+            child: Center(
+              child: FilledButton(
+                child: Text(I18n.of(context).choice_you_like),
+                onPressed: () => _choicePage(context, rankListMean),
+              ),
             ),
-          ),
-        );
-      }
-      if (rankStore.modeList.isNotEmpty) {
-        var list = I18n.of(context).mode_list.split(' ');
-        List<String> titles = [];
-        for (var i = 0; i < rankStore.modeList.length; i++) {
-          int index = modeList.indexOf(rankStore.modeList[i]);
-          if (index < 0) {
-            debugPrint(rankStore.modeList[i] + ' is -1');
-            continue;
-          }
-          titles.add(list[index]);
+          );
         }
-        return NavigationView(
-          pane: NavigationPane(
-              header: CommandBar(
-                primaryItems: [
-                  CommandBarButton(
-                    icon: Icon(FluentIcons.reset),
-                    onPressed: () {
-                      rankStore.reset();
-                      _choicePage(context, rankListMean);
-                    },
-                  )
-                ],
-                overflowBehavior: CommandBarOverflowBehavior.noWrap,
+        if (rankStore.modeList.isNotEmpty) {
+          var list = I18n.of(context).mode_list.split(' ');
+          List<String> titles = [];
+          for (var i = 0; i < rankStore.modeList.length; i++) {
+            int index = modeList.indexOf(rankStore.modeList[i]);
+            if (index < 0) {
+              debugPrint(rankStore.modeList[i] + ' is -1');
+              continue;
+            }
+            titles.add(list[index]);
+          }
+          return NavigationView(
+            pane: NavigationPane(
+              header: IconButton(
+                icon: Icon(WindowsIcons.return_to_window),
+                onPressed: () {
+                  rankStore.reset();
+                  _choicePage(context, rankListMean);
+                },
               ),
               selected: index,
               onChanged: (value) => setState(() => index = value),
@@ -162,23 +146,34 @@ class _RankPageState extends State<RankPage>
                   ),
               ],
               footerItems: [
-                PaneItemAction(
-                  icon: Icon(FluentIcons.date_time),
-                  onTap: () => _showTimePicker(context),
-                )
-              ]),
-        );
-      } else {
-        return Container(
-          child: Center(
-            child: FilledButton(
-              child: Text(I18n.of(context).choice_you_like),
-              onPressed: () => _choicePage(context, rankListMean),
+                PaneItemWidgetAdapter(
+                  child: CalendarDatePicker(
+                    initialStart: nowDateTime,
+                    onSelectionChanged: (value) {
+                      nowDateTime = value.selectedDates[0];
+                      this.dateTime = toRequestDate(nowDateTime);
+                    },
+                    locale: userSetting.locale,
+                    minDate: DateTime(2007, 8),
+                    //pixiv于2007年9月10日由上谷隆宏等人首次推出第一个测试版...
+                    maxDate: DateTime.now(),
+                  ),
+                ),
+              ],
             ),
-          ),
-        );
-      }
-    });
+          );
+        } else {
+          return Container(
+            child: Center(
+              child: FilledButton(
+                child: Text(I18n.of(context).choice_you_like),
+                onPressed: () => _choicePage(context, rankListMean),
+              ),
+            ),
+          );
+        }
+      },
+    );
   }
 
   void _choicePage(BuildContext context, List<String> rankListMean) {
@@ -232,57 +227,6 @@ class _RankPageState extends State<RankPage>
         ],
       ),
     );
-  }
-
-  Future _showTimePicker(BuildContext context) async {
-    // TODO: fluent_ui的日期选择器好像有点问题
-    var nowdate = DateTime.now();
-    var date = await showDatePicker(
-        context: context,
-        initialDate: nowDateTime,
-        locale: userSetting.locale,
-        firstDate: DateTime(2007, 8),
-        //pixiv于2007年9月10日由上谷隆宏等人首次推出第一个测试版...
-        lastDate: nowdate);
-    if (date != null && mounted) {
-      nowDateTime = date;
-      setState(() {
-        this.dateTime = toRequestDate(date);
-      });
-    }
-
-    // DateTime? current = null;
-    // showDialog(
-    //   context: context,
-    //   builder: (context) => ContentDialog(
-    //     title: Text('Choice a Date'),
-    //     content: Container(
-    //       child: DatePicker(
-    //         selected: current,
-    //         startDate: DateTime(2007, 8),
-    //       ),
-    //       width: 300,
-    //     ),
-    //     actions: [
-    //       Button(
-    //         child: Text(I18n.of(context).cancel),
-    //         onPressed: () => Navigator.of(context).pop(),
-    //       ),
-    //       FilledButton(
-    //         child: Text(I18n.of(context).ok),
-    //         onPressed: () {
-    //           if (mounted && current != null) {
-    //             nowDateTime = current;
-    //             setState(() {
-    //               this.dateTime = toRequestDate(current);
-    //             });
-    //           }
-    //           Navigator.of(context).pop();
-    //         },
-    //       ),
-    //     ],
-    //   ),
-    // );
   }
 
   List<String> _rankFilters = [];

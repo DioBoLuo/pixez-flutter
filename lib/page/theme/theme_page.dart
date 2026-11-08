@@ -15,11 +15,13 @@
 
 import 'dart:math';
 
-import 'package:flutter/material.dart';
-import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
+import 'package:pixez/component/picker/colorpicker.dart';
+import 'package:pixez/component/picker/utils.dart';
 import 'package:pixez/i18n.dart';
 import 'package:pixez/main.dart';
+import 'package:pixez/utils/haptic_util.dart';
 
 class ColorPickPage extends StatefulWidget {
   final Color initialColor;
@@ -41,38 +43,31 @@ class _ColorPickPageState extends State<ColorPickPage> {
   final skinList = [
     ThemeData(
       brightness: Brightness.light,
-      primaryColor: Colors.cyan[500],
-      indicatorColor: Colors.cyan[500],
+      primaryColor: Colors.cyan[500], tabBarTheme: TabBarThemeData(indicatorColor: Colors.cyan[500]),
     ),
     ThemeData(
       brightness: Brightness.light,
-      primaryColor: Colors.pink[500],
-      indicatorColor: Colors.pink[500],
+      primaryColor: Colors.pink[500], tabBarTheme: TabBarThemeData(indicatorColor: Colors.pink[500]),
     ),
     ThemeData(
       brightness: Brightness.light,
-      primaryColor: Colors.green[500],
-      indicatorColor: Colors.green[600],
+      primaryColor: Colors.green[500], tabBarTheme: TabBarThemeData(indicatorColor: Colors.green[600]),
     ),
     ThemeData(
       brightness: Brightness.light,
-      primaryColor: Colors.brown[500],
-      indicatorColor: Colors.brown[600],
+      primaryColor: Colors.brown[500], tabBarTheme: TabBarThemeData(indicatorColor: Colors.brown[600]),
     ),
     ThemeData(
       brightness: Brightness.light,
-      primaryColor: Colors.purple[500],
-      indicatorColor: Colors.purple[600],
+      primaryColor: Colors.purple[500], tabBarTheme: TabBarThemeData(indicatorColor: Colors.purple[600]),
     ),
     ThemeData(
       brightness: Brightness.light,
-      primaryColor: Colors.blue[500],
-      indicatorColor: Colors.blue[500],
+      primaryColor: Colors.blue[500], tabBarTheme: TabBarThemeData(indicatorColor: Colors.blue[500]),
     ),
     ThemeData(
       brightness: Brightness.light,
-      primaryColor: Color(0xFFFB7299),
-      indicatorColor: Color(0xFFFB7299),
+      primaryColor: Color(0xFFFB7299), tabBarTheme: TabBarThemeData(indicatorColor: Color(0xFFFB7299)),
     ),
   ];
 
@@ -87,11 +82,10 @@ class _ColorPickPageState extends State<ColorPickPage> {
               onPressed: () async {
                 final TextEditingController textEditingController =
                     TextEditingController(
-                        text: pickerColor.value
-                            .toString()
-                            .toLowerCase()
-                            .replaceAll('color(0xff', '')
-                            .replaceAll(')', ''));
+                        text: pickerColor.toHexString(
+                            includeHashSign: true,
+                            enableAlpha: false,
+                            toUpperCase: false));
 
                 String result = await showDialog(
                     context: context,
@@ -210,7 +204,7 @@ class _ThemePageState extends State<ThemePage> with TickerProviderStateMixin {
     return Observer(builder: (context) {
       return Scaffold(
         appBar: AppBar(
-            title: Text(I18n.of(context).skin),
+            title: Text(I18n.of(context).theme),
             bottom: TabBar(
                 controller: TabController(
                   length: 3,
@@ -218,6 +212,7 @@ class _ThemePageState extends State<ThemePage> with TickerProviderStateMixin {
                   vsync: this,
                 ),
                 onTap: (i) {
+                  HapticUtil.selectionClick();
                   userSetting.setThemeMode(i);
                 },
                 tabs: [
@@ -236,7 +231,10 @@ class _ThemePageState extends State<ThemePage> with TickerProviderStateMixin {
                 child: Card(
                     child: SwitchListTile(
                   value: userSetting.isAMOLED,
-                  onChanged: (v) => userSetting.setIsAMOLED(v),
+                  onChanged: (v) {
+                    HapticUtil.light();
+                    userSetting.setIsAMOLED(v);
+                  },
                   title: Text("AMOLED"),
                 )),
               ),
@@ -245,6 +243,7 @@ class _ThemePageState extends State<ThemePage> with TickerProviderStateMixin {
                     child: SwitchListTile(
                   value: userSetting.useDynamicColor,
                   onChanged: (v) async {
+                    HapticUtil.light();
                     await userSetting.setUseDynamicColor(v);
                     topStore.setTop("main");
                   },

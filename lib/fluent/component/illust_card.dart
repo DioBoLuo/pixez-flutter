@@ -19,8 +19,10 @@ import 'dart:ffi';
 import 'package:bot_toast/bot_toast.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
+import 'package:pixez/clipboard_plugin.dart';
 import 'package:pixez/component/null_hero.dart';
 import 'package:pixez/component/star_icon.dart';
+import 'package:pixez/constants.dart';
 import 'package:pixez/er/leader.dart';
 import 'package:pixez/er/lprinter.dart';
 import 'package:pixez/fluent/component/pixez_button.dart';
@@ -85,20 +87,38 @@ class _IllustCardState extends State<IllustCard> {
       child: _build(context),
       items: [
         MenuFlyoutItem(
-          text: Text('Like'),
+          leading: Observer(
+            builder: (context) {
+              switch (store.state) {
+                case 0:
+                  return Icon(FluentIcons.heart);
+                case 1:
+                  return Icon(FluentIcons.heart_fill);
+                default:
+                  return Icon(FluentIcons.heart_fill, color: Colors.red);
+              }
+            },
+          ),
+          text: Text(I18n.of(context).bookmark),
           onPressed: () async {
             await _onStar();
-            Navigator.of(context).pop();
           },
         ),
+        if (ClipboardPlugin.supported)
+          MenuFlyoutItem(
+            leading: Icon(FluentIcons.copy),
+            text: Text(I18n.of(context).copy),
+            onPressed: () => ClipboardPlugin.copy(context, store.illusts!, 0),
+          ),
         MenuFlyoutItem(
+          leading: Icon(FluentIcons.save),
           text: Text(I18n.of(context).save),
           onPressed: () async {
             await _onSave();
-            Navigator.of(context).pop();
           },
         ),
         MenuFlyoutItem(
+          leading: Icon(FluentIcons.favorite_list),
           text: Text(I18n.of(context).favorited_tag),
           onPressed: () async {
             final result = await showDialog<dynamic>(
@@ -111,7 +131,6 @@ class _IllustCardState extends State<IllustCard> {
               List<String>? tags = result['tags'];
               store.star(restrict: restrict, tags: tags, force: true);
             }
-            Navigator.of(context).pop();
           },
         ),
       ],
@@ -120,43 +139,45 @@ class _IllustCardState extends State<IllustCard> {
 
   Widget _build(BuildContext context) {
     if (userSetting.hIsNotAllow) {
-      final iR18 =
-          store.illusts?.tags.indexWhere((I) => I.name.startsWith('R-18'));
+      final iR18 = store.illusts?.tags.indexWhere(
+        (I) => I.name.startsWith('R-18'),
+      );
       if (iR18 != null && iR18 != -1) {
         return PixEzButton(
           onPressed: () => _buildTap(context),
-          child: Image.asset('assets/images/h.jpg'),
+          child: Image.asset(Constants.no_h),
         );
       }
     }
 
-    return buildInkWell(context);
+    return _buildInkWell(context);
   }
 
   _onSave() async {
     if (userSetting.longPressSaveConfirm) {
       final result = await showDialog<Bool>(
-          context: context,
-          builder: (context) {
-            return ContentDialog(
-              title: Text(I18n.of(context).save),
-              content: Text(store.illusts?.title ?? ""),
-              actions: <Widget>[
-                HyperlinkButton(
-                  child: Text(I18n.of(context).cancel),
-                  onPressed: () {
-                    Navigator.of(context).pop(false);
-                  },
-                ),
-                HyperlinkButton(
-                  child: Text(I18n.of(context).ok),
-                  onPressed: () {
-                    Navigator.of(context).pop(true);
-                  },
-                ),
-              ],
-            );
-          });
+        context: context,
+        builder: (context) {
+          return ContentDialog(
+            title: Text(I18n.of(context).save),
+            content: Text(store.illusts?.title ?? ""),
+            actions: <Widget>[
+              HyperlinkButton(
+                child: Text(I18n.of(context).cancel),
+                onPressed: () {
+                  Navigator.of(context).pop(false);
+                },
+              ),
+              HyperlinkButton(
+                child: Text(I18n.of(context).ok),
+                onPressed: () {
+                  Navigator.of(context).pop(true);
+                },
+              ),
+            ],
+          );
+        },
+      );
       if (result != true) {
         return;
       }
@@ -180,10 +201,7 @@ class _IllustCardState extends State<IllustCard> {
 
   Widget cardText() {
     if (store.illusts!.type != "illust") {
-      return Text(
-        store.illusts!.type,
-        style: TextStyle(color: Colors.white),
-      );
+      return Text(store.illusts!.type, style: TextStyle(color: Colors.white));
     }
     if (store.illusts!.metaPages.isNotEmpty) {
       return Text(
@@ -198,37 +216,67 @@ class _IllustCardState extends State<IllustCard> {
     return tooLong
         ? NullHero(
             tag: tag,
-            child: PixivImage(store.illusts!.imageUrls.squareMedium,
-                fit: BoxFit.fitWidth),
+            child: PixivImage(
+              store.illusts!.imageUrls.squareMedium,
+              fit: BoxFit.fitWidth,
+            ),
           )
         : NullHero(
             tag: tag,
-            child: PixivImage(store.illusts!.imageUrls.medium,
-                fit: BoxFit.fitWidth),
+            child: PixivImage(
+              store.illusts!.imageUrls.medium,
+              fit: BoxFit.fitWidth,
+            ),
           );
   }
 
-  Widget buildInkWell(BuildContext context) {
+  Widget _buildInkWell(BuildContext context) {
     var tooLong =
         store.illusts!.height.toDouble() / store.illusts!.width.toDouble() > 3;
     var radio = (tooLong)
         ? 1.0
         : store.illusts!.width.toDouble() / store.illusts!.height.toDouble();
     return _buildAnimationWraper(
-        context,
-        Column(
-          children: <Widget>[
-            AspectRatio(
-                aspectRatio: radio,
-                child: Stack(
-                  children: [
-                    Positioned.fill(child: _buildPic(tag, tooLong)),
-                    Positioned(top: 5.0, right: 5.0, child: _buildVisibility()),
-                  ],
-                )),
-            _buildBottom(context),
-          ],
-        ));
+      context,
+      Column(
+        children: <Widget>[
+          AspectRatio(
+            aspectRatio: radio,
+            child: Stack(
+              children: [
+                Positioned.fill(child: _buildPic(tag, tooLong)),
+                Positioned(
+                  top: 5.0,
+                  right: 5.0,
+                  child: Row(
+                    children: [
+                      if (userSetting.feedAIBadge &&
+                          store.illusts!.illustAIType == 2)
+                        _buildAIBadge(),
+                      _buildVisibility(),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _buildBottom(context),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAIBadge() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.all(Radius.circular(4.0)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2.0, horizontal: 2.0),
+        child: Text("AI", style: TextStyle(color: Colors.white)),
+      ),
+    );
   }
 
   Widget _buildAnimationWraper(BuildContext context, Widget child) {
@@ -265,14 +313,32 @@ class _IllustCardState extends State<IllustCard> {
   }
 
   _onStar() async {
-    store.star(restrict: userSetting.defaultPrivateLike ? "private" : "public");
-    if (!userSetting.followAfterStar) {
-      return;
+    if (userSetting.saveAfterStar && (store.state == 0)) {
+      saveStore.saveImage(store.illusts!);
     }
-    bool success = await store.followAfterStar();
-    if (success) {
-      BotToast.showText(
-          text: "${store.illusts!.user.name} ${I18n.of(context).followed}");
+    // TODO: 添加配置项 开关和过滤器
+    final List<String>? tags;
+    if (userSetting.autoTagWhenStar) {
+      final filters = [RegExp(r"\d+users入り")];
+      tags = store.illusts?.tags
+          .map((tag) => tag.name)
+          .where((tag) => !filters.any((regex) => regex.hasMatch(tag)))
+          .toList();
+    } else {
+      tags = null;
+    }
+
+    bool success = await store.star(
+      restrict: userSetting.defaultPrivateLike ? "private" : "public",
+      tags: tags,
+    );
+    if (success && userSetting.followAfterStar) {
+      bool followSuccess = await store.followAfterStar();
+      if (followSuccess) {
+        BotToast.showText(
+          text: "${store.illusts!.user.name} ${I18n.of(context).followed}",
+        );
+      }
     }
   }
 
@@ -283,36 +349,42 @@ class _IllustCardState extends State<IllustCard> {
         children: <Widget>[
           Padding(
             padding: const EdgeInsets.only(
-                left: 8.0, right: 36.0, top: 4, bottom: 4),
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(
-                store.illusts!.title,
-                maxLines: 1,
-                overflow: TextOverflow.clip,
-                style: FluentTheme.of(context).typography.bodyStrong,
-                strutStyle: StrutStyle(forceStrutHeight: true, leading: 0),
-              ),
-              Text(
-                store.illusts!.user.name,
-                maxLines: 1,
-                overflow: TextOverflow.clip,
-                style: FluentTheme.of(context).typography.body,
-                strutStyle: StrutStyle(forceStrutHeight: true, leading: 0),
-              )
-            ]),
+              left: 8.0,
+              right: 36.0,
+              top: 4,
+              bottom: 4,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  store.illusts!.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.clip,
+                  style: FluentTheme.of(context).typography.bodyStrong,
+                  strutStyle: StrutStyle(forceStrutHeight: true, leading: 0),
+                ),
+                Text(
+                  store.illusts!.user.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.clip,
+                  style: FluentTheme.of(context).typography.body,
+                  strutStyle: StrutStyle(forceStrutHeight: true, leading: 0),
+                ),
+              ],
+            ),
           ),
           Align(
             alignment: Alignment.centerRight,
             child: GestureDetector(
-              child: Observer(builder: (_) {
-                return StarIcon(
-                  state: store.state,
-                );
-              }),
+              child: Observer(
+                builder: (_) {
+                  return StarIcon(state: store.state);
+                },
+              ),
               onTap: _onStar,
             ),
-          )
+          ),
         ],
       ),
     );
@@ -320,7 +392,8 @@ class _IllustCardState extends State<IllustCard> {
 
   Widget _buildVisibility() {
     return Visibility(
-      visible: store.illusts!.type != "illust" ||
+      visible:
+          store.illusts!.type != "illust" ||
           store.illusts!.metaPages.isNotEmpty,
       child: Align(
         alignment: Alignment.topRight,
@@ -328,8 +401,10 @@ class _IllustCardState extends State<IllustCard> {
           padding: EdgeInsets.all(4.0),
           child: Container(
             child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(vertical: 2.0, horizontal: 2.0),
+              padding: const EdgeInsets.symmetric(
+                vertical: 2.0,
+                horizontal: 2.0,
+              ),
               child: cardText(),
             ),
             decoration: BoxDecoration(

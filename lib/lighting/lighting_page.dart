@@ -17,11 +17,12 @@
 import 'dart:math';
 
 import 'package:easy_refresh/easy_refresh.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:mobx/mobx.dart';
 import 'package:pixez/component/illust_card.dart';
 import 'package:pixez/component/pixez_default_header.dart';
+import 'package:pixez/constants.dart';
 import 'package:pixez/exts.dart';
 import 'package:pixez/i18n.dart';
 import 'package:pixez/lighting/lighting_store.dart';
@@ -52,6 +53,7 @@ class LightingList extends StatefulWidget {
   final ScrollController? scrollController;
   final String? portal;
   final bool? ai;
+  final bool Function(Illusts)? filter;
 
   const LightingList(
       {Key? key,
@@ -60,7 +62,8 @@ class LightingList extends StatefulWidget {
       this.isNested,
       this.scrollController,
       this.portal,
-      this.ai})
+      this.ai,
+      this.filter})
       : super(key: key);
 
   @override
@@ -133,8 +136,13 @@ class _LightingListState extends State<LightingList> {
   late EasyRefreshController _refreshController;
 
   Widget _buildWithoutHeader(context) {
-    _store.iStores
-        .removeWhere((element) => element.illusts!.hateByUser(ai: _ai));
+    _store.iStores.removeWhere((element) {
+      if (element.illusts!.hateByUser(ai: _ai)) return true;
+      if (widget.filter != null && !widget.filter!(element.illusts!)) {
+        return true;
+      }
+      return false;
+    });
     return NotificationListener<ScrollNotification>(
         onNotification: (ScrollNotification notification) {
           if (widget.isNested == true) {
@@ -199,7 +207,8 @@ class _LightingListState extends State<LightingList> {
               );
   }
 
-  Container _buildErrorContent(context) {
+  Widget _buildErrorContent(context) {
+    final errorText = _buildErrorText(context);
     return Container(
       child: Column(
         mainAxisSize: MainAxisSize.max,
@@ -222,13 +231,19 @@ class _LightingListState extends State<LightingList> {
           Padding(
               padding: const EdgeInsets.all(16.0),
               child: Text(
-                (_store.errorMessage?.contains("400") == true
-                    ? '${I18n.of(context).error_400_hint}\n ${_store.errorMessage}'
-                    : '${_store.errorMessage}'),
+                errorText,
               ))
         ],
       ),
     );
+  }
+
+  String _buildErrorText(BuildContext context) {
+    final errorMessage = _store.errorMessage;
+    final message = errorMessage?.contains("400") == true
+        ? '${I18n.of(context).error_400_hint}\n $errorMessage'
+        : '$errorMessage';
+    return '(${Constants.tagName}) $message';
   }
 
   Widget _buildWithHeader(BuildContext context) {
@@ -276,8 +291,13 @@ class _LightingListState extends State<LightingList> {
 
   SliverChildBuilderDelegate _buildSliverChildBuilderDelegate(
       BuildContext context) {
-    _store.iStores
-        .removeWhere((element) => element.illusts!.hateByUser(ai: _ai));
+    _store.iStores.removeWhere((element) {
+      if (element.illusts!.hateByUser(ai: _ai)) return true;
+      if (widget.filter != null && !widget.filter!(element.illusts!)) {
+        return true;
+      }
+      return false;
+    });
     return SliverChildBuilderDelegate((BuildContext context, int index) {
       return IllustCard(
         lightingStore: _store,
@@ -289,7 +309,9 @@ class _LightingListState extends State<LightingList> {
 
   SliverWaterfallFlowDelegate _buildGridDelegate() {
     var count = 2;
-    if (userSetting.crossAdapt) {
+    if (MediaQuery.of(context).orientation == Orientation.portrait
+        ? userSetting.crossAdapt
+        : userSetting.hCrossAdapt) {
       count = _buildSliderValue();
     } else {
       count = (MediaQuery.of(context).orientation == Orientation.portrait)
